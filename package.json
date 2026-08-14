@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "test:ui-model": "node --experimental-strip-types --test src/features/player/model/*.test.ts",
     "tauri": "tauri",
     "android:dev": "tauri android dev",
     "android:build": "tauri android build",
