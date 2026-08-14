@@ -61,33 +61,35 @@ function DeckCard(props: DeckCardProps) {
  */
 export function ArtworkDeck(props: ArtworkDeckProps) {
   return (
-    <div class="relative w-full overflow-hidden [container-type:inline-size]">
-      <div class="relative mx-auto aspect-square w-[min(78cqw,58dvh,34rem)]">
-        {props.previous !== null && (
+    <div class="relative w-full [container-type:inline-size]">
+      <div class="relative mx-auto w-[min(100cqw,74.358974dvh,43.589744rem)] overflow-hidden [container-type:inline-size]">
+        <div class="relative mx-auto aspect-square w-[78cqw]">
+          {props.previous !== null && (
+            <DeckCard
+              position="previous"
+              track={props.previous}
+              dragX={props.dragX}
+              settling={props.settling}
+              reducedMotion={props.reducedMotion}
+            />
+          )}
           <DeckCard
-            position="previous"
-            track={props.previous}
+            position="current"
+            track={props.current}
             dragX={props.dragX}
             settling={props.settling}
             reducedMotion={props.reducedMotion}
           />
-        )}
-        <DeckCard
-          position="current"
-          track={props.current}
-          dragX={props.dragX}
-          settling={props.settling}
-          reducedMotion={props.reducedMotion}
-        />
-        {props.next !== null && (
-          <DeckCard
-            position="next"
-            track={props.next}
-            dragX={props.dragX}
-            settling={props.settling}
-            reducedMotion={props.reducedMotion}
-          />
-        )}
+          {props.next !== null && (
+            <DeckCard
+              position="next"
+              track={props.next}
+              dragX={props.dragX}
+              settling={props.settling}
+              reducedMotion={props.reducedMotion}
+            />
+          )}
+        </div>
       </div>
     </div>
   )
