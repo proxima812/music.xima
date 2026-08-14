@@ -32,7 +32,10 @@ import java.util.concurrent.atomic.AtomicLong
  * Воспроизведение уходит в [PlaybackController], работа с файлами — в [MusicLibrary]
  * на `Dispatchers.IO`. Наверх всё возвращается событиями `trigger()`, а не поллингом.
  */
-internal fun needsLegacyStorageWritePermission(sdkInt: Int): Boolean = sdkInt <= Build.VERSION_CODES.P
+internal fun needsLegacyMediaStoreWritePermission(sdkInt: Int, uri: String): Boolean =
+    sdkInt <= Build.VERSION_CODES.P &&
+        TrackFileDeleter.classifyTarget(uri, isDocumentUri = false, documentFlags = null) ==
+        DeleteTarget.MEDIA_STORE
 
 @TauriPlugin(
     permissions = [
@@ -295,7 +298,9 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun deleteTrackFile(invoke: Invoke) {
-        if (needsLegacyStorageWritePermission(Build.VERSION.SDK_INT) &&
+        val args = argsOf(invoke) ?: return
+        val uri = args.stringOrNull("uri") ?: return invoke.reject("deleteTrackFile: uri is required")
+        if (needsLegacyMediaStoreWritePermission(Build.VERSION.SDK_INT, uri) &&
             ContextCompat.checkSelfPermission(
                 activity,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -308,17 +313,15 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
             )
             return
         }
-        deleteTrackFileGranted(invoke)
+        deleteTrackFileGranted(invoke, uri)
     }
 
     @PermissionCallback
     fun onLegacyStorageWriteGranted(invoke: Invoke) {
-        deleteTrackFileGranted(invoke)
+        deleteTrackFile(invoke)
     }
 
-    private fun deleteTrackFileGranted(invoke: Invoke) {
-        val args = argsOf(invoke) ?: return
-        val uri = args.stringOrNull("uri") ?: return invoke.reject("deleteTrackFile: uri is required")
+    private fun deleteTrackFileGranted(invoke: Invoke, uri: String) {
         scope.launch {
             try {
                 when (val action = trackFileDeleter.delete(uri)) {

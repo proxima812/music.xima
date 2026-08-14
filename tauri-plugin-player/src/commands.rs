@@ -13,6 +13,16 @@ use crate::models::{
 };
 use crate::{PlayerExt, Result};
 
+async fn blocking_plugin_call<T, F>(call: F) -> Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(call)
+        .await
+        .map_err(|error| crate::Error::native(format!("player blocking task failed: {error}")))?
+}
+
 #[tauri::command]
 pub(crate) async fn get_state<R: Runtime>(app: AppHandle<R>) -> Result<PlaybackState> {
     app.player().get_state()
@@ -160,7 +170,7 @@ pub(crate) async fn delete_track_file<R: Runtime>(
     app: AppHandle<R>,
     uri: String,
 ) -> Result<DeleteFileResponse> {
-    app.player().delete_track_file(uri)
+    blocking_plugin_call(move || app.player().delete_track_file(uri)).await
 }
 
 #[tauri::command]
@@ -168,5 +178,21 @@ pub(crate) async fn track_file_exists<R: Runtime>(
     app: AppHandle<R>,
     uri: String,
 ) -> Result<TrackFileExistsResponse> {
-    app.player().track_file_exists(uri)
+    blocking_plugin_call(move || app.player().track_file_exists(uri)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::blocking_plugin_call;
+
+    #[test]
+    fn direct_plugin_calls_run_off_the_calling_thread() {
+        let caller = std::thread::current().id();
+        let worker = tauri::async_runtime::block_on(blocking_plugin_call(move || {
+            Ok(std::thread::current().id())
+        }))
+        .expect("blocking call succeeds");
+
+        assert_ne!(worker, caller);
+    }
 }

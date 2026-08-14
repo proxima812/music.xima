@@ -110,10 +110,27 @@ class TrackFileDeleterTest {
     }
 
     @Test
-    fun legacyWritePermissionIsRequestedOnlyThroughAndroid28() {
-        assertEquals(true, needsLegacyStorageWritePermission(Build.VERSION_CODES.O))
-        assertEquals(true, needsLegacyStorageWritePermission(Build.VERSION_CODES.P))
-        assertEquals(false, needsLegacyStorageWritePermission(Build.VERSION_CODES.Q))
-        assertEquals(false, needsLegacyStorageWritePermission(Build.VERSION_CODES.R))
+    fun legacyWritePermissionIsOnlyForConcreteMediaStoreItemsThroughAndroid28() {
+        val mediaItem = "content://media/external/audio/media/42"
+        assertEquals(
+            true,
+            needsLegacyMediaStoreWritePermission(Build.VERSION_CODES.P, mediaItem),
+        )
+        assertEquals(
+            false,
+            needsLegacyMediaStoreWritePermission(Build.VERSION_CODES.Q, mediaItem),
+        )
+        for (uri in listOf(
+            "content://media/external/audio/media",
+            "content://com.android.externalstorage.documents/document/primary%3AMusic%2Fsong.mp3",
+            "file:///storage/emulated/0/Music/song.mp3",
+            "content://com.example.unknown/items/42",
+        )) {
+            assertEquals(
+                "must not request broad storage permission for $uri",
+                false,
+                needsLegacyMediaStoreWritePermission(Build.VERSION_CODES.P, uri),
+            )
+        }
     }
 }
