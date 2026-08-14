@@ -28,10 +28,6 @@ impl SqlitePlaylistRepository {
     }
 }
 
-/// Slot the row being moved waits in. Every shifted row is encoded as
-/// `-(new_position + 2)`, so the two ranges never meet.
-const PARKED: i64 = -1;
-
 fn playlist_tracks_sql() -> String {
     format!(
         "SELECT {TRACK_COLUMNS} FROM playlist_tracks pt \
@@ -49,12 +45,19 @@ async fn touch(conn: &mut SqliteConnection, id: i64) -> CoreResult<()> {
     Ok(())
 }
 
-async fn length(conn: &mut SqliteConnection, id: i64) -> CoreResult<i64> {
-    let row = sqlx::query("SELECT COUNT(*) AS n FROM playlist_tracks WHERE playlist_id = ?")
-        .bind(id)
-        .fetch_one(&mut *conn)
-        .await?;
-    Ok(row.try_get("n")?)
+async fn visible_rows(conn: &mut SqliteConnection, id: i64) -> CoreResult<Vec<(i64, i64)>> {
+    let rows = dyn_query(format!(
+        "SELECT pt.position AS position, pt.track_id AS track_id \
+         FROM playlist_tracks pt JOIN tracks t ON t.id = pt.track_id \
+         WHERE pt.playlist_id = ? AND {TRACK_IS_VISIBLE} \
+         ORDER BY pt.position ASC"
+    ))
+    .bind(id)
+    .fetch_all(&mut *conn)
+    .await?;
+    rows.iter()
+        .map(|row| Ok((row.try_get("position")?, row.try_get("track_id")?)))
+        .collect()
 }
 
 /// Brings every parked row back into the dense range.
@@ -185,10 +188,17 @@ impl PlaylistRepository for SqlitePlaylistRepository {
         let mut tx = self.pool.begin().await?;
         ensure_playlist(&mut tx, id).await?;
 
+        let rows = visible_rows(&mut tx, id).await?;
+        let raw_position = usize::try_from(position)
+            .ok()
+            .and_then(|ordinal| rows.get(ordinal))
+            .map(|(raw_position, _)| *raw_position)
+            .ok_or_else(|| CoreError::not_found("playlist position", position))?;
+
         let removed =
             sqlx::query("DELETE FROM playlist_tracks WHERE playlist_id = ? AND position = ?")
                 .bind(id)
-                .bind(position)
+                .bind(raw_position)
                 .execute(&mut *tx)
                 .await?;
         if removed.rows_affected() == 0 {
@@ -202,7 +212,7 @@ impl PlaylistRepository for SqlitePlaylistRepository {
              WHERE playlist_id = ? AND position > ?",
         )
         .bind(id)
-        .bind(position)
+        .bind(raw_position)
         .execute(&mut *tx)
         .await?;
         unpark(&mut tx, id).await?;
@@ -216,7 +226,8 @@ impl PlaylistRepository for SqlitePlaylistRepository {
         let mut tx = self.pool.begin().await?;
         ensure_playlist(&mut tx, id).await?;
 
-        let len = length(&mut tx, id).await?;
+        let rows = visible_rows(&mut tx, id).await?;
+        let len = i64::try_from(rows.len()).unwrap_or(i64::MAX);
         if from < 0 || to < 0 || from >= len || to >= len {
             return Err(CoreError::invalid_input(format!(
                 "cannot move {from} to {to} in a playlist of {len}"
@@ -226,51 +237,25 @@ impl PlaylistRepository for SqlitePlaylistRepository {
             return Ok(());
         };
 
-        let parked = sqlx::query(
-            "UPDATE playlist_tracks SET position = ? WHERE playlist_id = ? AND position = ?",
-        )
-        .bind(PARKED)
-        .bind(id)
-        .bind(from)
-        .execute(&mut *tx)
-        .await?;
-        if parked.rows_affected() == 0 {
-            return Err(CoreError::not_found("playlist position", from));
-        }
-
-        if from < target {
-            // (from, target] slides one slot forward: new = position - 1.
+        let from_index = usize::try_from(from)
+            .map_err(|_| CoreError::invalid_input("playlist position is too large"))?;
+        let target_index = usize::try_from(target)
+            .map_err(|_| CoreError::invalid_input("playlist position is too large"))?;
+        let slots: Vec<i64> = rows.iter().map(|(raw_position, _)| *raw_position).collect();
+        let mut track_ids: Vec<i64> = rows.iter().map(|(_, track_id)| *track_id).collect();
+        let moved = track_ids.remove(from_index);
+        track_ids.insert(target_index, moved);
+        for (raw_position, track_id) in slots.iter().zip(&track_ids) {
             sqlx::query(
-                "UPDATE playlist_tracks SET position = -(position + 1) \
-                 WHERE playlist_id = ? AND position > ? AND position <= ?",
+                "UPDATE playlist_tracks SET track_id = ? \
+                 WHERE playlist_id = ? AND position = ?",
             )
+            .bind(*track_id)
             .bind(id)
-            .bind(from)
-            .bind(target)
-            .execute(&mut *tx)
-            .await?;
-        } else {
-            // [target, from) slides one slot back: new = position + 1.
-            sqlx::query(
-                "UPDATE playlist_tracks SET position = -(position + 3) \
-                 WHERE playlist_id = ? AND position >= ? AND position < ?",
-            )
-            .bind(id)
-            .bind(target)
-            .bind(from)
+            .bind(*raw_position)
             .execute(&mut *tx)
             .await?;
         }
-        unpark(&mut tx, id).await?;
-
-        sqlx::query(
-            "UPDATE playlist_tracks SET position = ? WHERE playlist_id = ? AND position = ?",
-        )
-        .bind(target)
-        .bind(id)
-        .bind(PARKED)
-        .execute(&mut *tx)
-        .await?;
 
         touch(&mut tx, id).await?;
         tx.commit().await?;
@@ -331,7 +316,14 @@ mod tests {
         .expect("positions")
         .iter()
         .map(|row| (row.get::<i64, _>("position"), row.get::<i64, _>("track_id")))
-        .collect()
+            .collect()
+    }
+
+    async fn hide_track(db: &Db, track_id: i64) {
+        SqliteTrackRepository::new(db.clone())
+            .hide(track_id, 100)
+            .await
+            .expect("hidden");
     }
 
     fn dense(rows: &[(i64, i64)]) -> bool {
@@ -425,6 +417,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn remove_at_resolves_visible_ordinals_around_hidden_rows() {
+        for (hidden_index, remove_visible, expected_indexes) in [
+            (0_usize, 1_i64, vec![0_usize, 1, 3]),
+            (1, 1, vec![0, 1, 3]),
+            (3, 1, vec![0, 2, 3]),
+        ] {
+            let (db, playlists, id, ids) = seeded().await;
+            hide_track(&db, ids[hidden_index]).await;
+
+            playlists
+                .remove_at(id, remove_visible)
+                .await
+                .expect("visible row removed");
+
+            let rows = positions(&db, id).await;
+            assert!(dense(&rows), "raw positions must stay dense: {rows:?}");
+            assert_eq!(
+                rows.iter()
+                    .map(|(_, track_id)| *track_id)
+                    .collect::<Vec<_>>(),
+                expected_indexes
+                    .iter()
+                    .map(|index| ids[*index])
+                    .collect::<Vec<_>>()
+            );
+            assert!(
+                rows.iter()
+                    .any(|(_, track_id)| *track_id == ids[hidden_index]),
+                "hidden relationship must remain"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn reorder_moves_forward_and_back() {
         let (db, playlists, id, ids) = seeded().await;
 
@@ -443,6 +469,72 @@ mod tests {
             rows.iter().map(|(_, t)| *t).collect::<Vec<_>>(),
             vec![ids[3], ids[1], ids[2], ids[0]]
         );
+    }
+
+    #[tokio::test]
+    async fn reorder_remaps_visible_rows_without_moving_hidden_slots() {
+        for (hidden_index, forward_indexes, backward_indexes) in [
+            (0_usize, vec![2_usize, 3, 1], vec![1_usize, 2, 3]),
+            (1, vec![2, 3, 0], vec![0, 2, 3]),
+            (3, vec![1, 2, 0], vec![0, 1, 2]),
+        ] {
+            let (db, playlists, id, ids) = seeded().await;
+            hide_track(&db, ids[hidden_index]).await;
+            let hidden_position = positions(&db, id)
+                .await
+                .iter()
+                .find(|(_, track_id)| *track_id == ids[hidden_index])
+                .expect("hidden row")
+                .0;
+
+            playlists.reorder(id, 0, 2).await.expect("forward");
+            let forward = positions(&db, id).await;
+            assert_eq!(
+                forward
+                    .iter()
+                    .find(|(_, track_id)| *track_id == ids[hidden_index])
+                    .expect("hidden row")
+                    .0,
+                hidden_position,
+                "hidden slot moved during forward reorder"
+            );
+            let visible_forward = playlists.tracks(id).await.expect("visible tracks");
+            assert_eq!(
+                visible_forward
+                    .iter()
+                    .map(|track| track.id)
+                    .collect::<Vec<_>>(),
+                forward_indexes
+                    .iter()
+                    .map(|index| ids[*index])
+                    .collect::<Vec<_>>()
+            );
+
+            playlists.reorder(id, 2, 0).await.expect("backward");
+            let backward = positions(&db, id).await;
+            assert_eq!(
+                backward
+                    .iter()
+                    .find(|(_, track_id)| *track_id == ids[hidden_index])
+                    .expect("hidden row")
+                    .0,
+                hidden_position,
+                "hidden slot moved during backward reorder"
+            );
+            assert_eq!(
+                playlists
+                    .tracks(id)
+                    .await
+                    .expect("visible tracks")
+                    .iter()
+                    .map(|track| track.id)
+                    .collect::<Vec<_>>(),
+                backward_indexes
+                    .iter()
+                    .map(|index| ids[*index])
+                    .collect::<Vec<_>>()
+            );
+        }
     }
 
     #[tokio::test]

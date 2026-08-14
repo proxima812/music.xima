@@ -1249,6 +1249,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delete_missing_cascades_a_hidden_tombstone_when_uri_disappears() {
+        let db = pool().await;
+        let repo = SqliteTrackRepository::new(db.clone());
+        repo.upsert_many(&[
+            scanned("content://kept", "Kept"),
+            scanned("content://gone-hidden", "Gone"),
+        ])
+        .await
+        .expect("scan");
+        let hidden_id: i64 = sqlx::query("SELECT id FROM tracks WHERE uri = ?")
+            .bind("content://gone-hidden")
+            .fetch_one(&db)
+            .await
+            .expect("hidden id")
+            .get("id");
+        repo.hide(hidden_id, 100).await.expect("hide");
+
+        assert_eq!(
+            repo.delete_missing(&["content://kept".to_owned()])
+                .await
+                .expect("delete missing"),
+            1
+        );
+        let tracks: i64 = sqlx::query("SELECT COUNT(*) AS count FROM tracks WHERE id = ?")
+            .bind(hidden_id)
+            .fetch_one(&db)
+            .await
+            .expect("track counted")
+            .get("count");
+        let tombstones: i64 =
+            sqlx::query("SELECT COUNT(*) AS count FROM hidden_tracks WHERE track_id = ?")
+                .bind(hidden_id)
+                .fetch_one(&db)
+                .await
+                .expect("tombstone counted")
+                .get("count");
+        assert_eq!(tracks, 0);
+        assert_eq!(tombstones, 0);
+    }
+
+    #[tokio::test]
     async fn stats_sum_the_library() {
         let db = pool().await;
         let repo = SqliteTrackRepository::new(db.clone());
