@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-scan-tree"
+description = "Enables the scan_tree command without any pre-configured scope."
+commands.allow = ["scan_tree"]
+
+[[permission]]
+identifier = "deny-scan-tree"
+description = "Denies the scan_tree command without any pre-configured scope."
+commands.deny = ["scan_tree"]

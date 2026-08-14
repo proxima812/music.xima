@@ -1,0 +1,360 @@
+package com.xima.music.player
+
+import android.app.Activity
+import android.webkit.WebView
+import androidx.activity.result.ActivityResult
+import androidx.appcompat.app.AppCompatActivity
+import app.tauri.annotation.ActivityCallback
+import app.tauri.annotation.Command
+import app.tauri.annotation.TauriPlugin
+import app.tauri.plugin.Invoke
+import app.tauri.plugin.JSObject
+import app.tauri.plugin.Plugin
+import com.xima.music.player.library.MusicLibrary
+import com.xima.music.player.library.ScanBatchResult
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicLong
+
+/**
+ * Единственная точка входа из Rust в нативный слой (docs/CONTRACTS.md §7.2).
+ *
+ * Воспроизведение уходит в [PlaybackController], работа с файлами — в [MusicLibrary]
+ * на `Dispatchers.IO`. Наверх всё возвращается событиями `trigger()`, а не поллингом.
+ */
+@TauriPlugin
+class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val library by lazy { MusicLibrary(activity) }
+    private val controller by lazy { PlaybackController(activity.applicationContext, Events()) }
+
+    /** Найдено с начала текущего скана: сканер отдаёт треки порциями. */
+    private val scannedSoFar = AtomicLong(0L)
+
+    override fun load(webView: WebView) {
+        super.load(webView)
+        controller.connect()
+    }
+
+    /** Активность могли пересоздать — `connect()` идемпотентен и просто ничего не делает. */
+    override fun onResume() {
+        super.onResume()
+        controller.connect()
+    }
+
+    override fun onDestroy(activity: AppCompatActivity) {
+        super.onDestroy(activity)
+        controller.release()
+        scope.cancel()
+    }
+
+    // ── Плеер ───────────────────────────────────────────────────────────────
+
+    @Command
+    fun getState(invoke: Invoke) {
+        invoke.resolve(controller.getState().toJson())
+    }
+
+    @Command
+    fun setQueue(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        controller.setQueue(
+            items = args.queueItems("items"),
+            startIndex = args.intOrNull("startIndex") ?: 0,
+            autoplay = args.booleanOrNull("autoplay") ?: false,
+        )
+        invoke.resolve()
+    }
+
+    @Command
+    fun play(invoke: Invoke) {
+        controller.play()
+        invoke.resolve()
+    }
+
+    @Command
+    fun pause(invoke: Invoke) {
+        controller.pause()
+        invoke.resolve()
+    }
+
+    @Command
+    fun toggle(invoke: Invoke) {
+        controller.toggle()
+        invoke.resolve()
+    }
+
+    @Command
+    fun stop(invoke: Invoke) {
+        controller.stop()
+        invoke.resolve()
+    }
+
+    @Command
+    fun next(invoke: Invoke) {
+        controller.next()
+        invoke.resolve()
+    }
+
+    @Command
+    fun previous(invoke: Invoke) {
+        controller.previous()
+        invoke.resolve()
+    }
+
+    @Command
+    fun seek(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val positionMs = args.longOrNull("positionMs") ?: return invoke.reject("seek: positionMs is required")
+        controller.seek(positionMs)
+        invoke.resolve()
+    }
+
+    @Command
+    fun skipTo(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val index = args.intOrNull("index") ?: return invoke.reject("skipTo: index is required")
+        controller.skipTo(index)
+        invoke.resolve()
+    }
+
+    @Command
+    fun setShuffle(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val enabled = args.booleanOrNull("enabled") ?: return invoke.reject("setShuffle: enabled is required")
+        controller.setShuffle(enabled)
+        invoke.resolve()
+    }
+
+    @Command
+    fun setRepeat(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val raw = args.stringOrNull("mode")
+        val mode = RepeatMode.fromToken(raw) ?: return invoke.reject("setRepeat: unknown mode ${raw ?: "null"}")
+        controller.setRepeat(mode)
+        invoke.resolve()
+    }
+
+    @Command
+    fun setVolume(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val volume = args.floatOrNull("volume") ?: return invoke.reject("setVolume: volume is required")
+        controller.setVolume(volume)
+        invoke.resolve()
+    }
+
+    @Command
+    fun setSpeed(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val speed = args.floatOrNull("speed") ?: return invoke.reject("setSpeed: speed is required")
+        controller.setSpeed(speed)
+        invoke.resolve()
+    }
+
+    @Command
+    fun addNext(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        controller.addNext(args.queueItems("items"))
+        invoke.resolve()
+    }
+
+    @Command
+    fun addToQueue(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        controller.addToQueue(args.queueItems("items"))
+        invoke.resolve()
+    }
+
+    @Command
+    fun removeQueueItem(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val index = args.intOrNull("index") ?: return invoke.reject("removeQueueItem: index is required")
+        controller.removeQueueItem(index)
+        invoke.resolve()
+    }
+
+    @Command
+    fun moveQueueItem(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val from = args.intOrNull("from") ?: return invoke.reject("moveQueueItem: from is required")
+        val to = args.intOrNull("to") ?: return invoke.reject("moveQueueItem: to is required")
+        controller.moveQueueItem(from, to)
+        invoke.resolve()
+    }
+
+    @Command
+    fun clearQueue(invoke: Invoke) {
+        controller.clearQueue()
+        invoke.resolve()
+    }
+
+    // ── Библиотека ──────────────────────────────────────────────────────────
+
+    @Command
+    fun scanMediaStore(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val since = args.longOrNull("since")
+        runScan(invoke) { library.scanMediaStore(since) }
+    }
+
+    @Command
+    fun scanTree(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val treeUri = args.stringOrNull("treeUri") ?: return invoke.reject("scanTree: treeUri is required")
+        val since = args.longOrNull("since")
+        runScan(invoke) { library.scanTree(treeUri, since) }
+    }
+
+    @Command
+    fun pickFolder(invoke: Invoke) {
+        val intent = try {
+            library.openDocumentTreeIntent()
+        } catch (error: Exception) {
+            return invoke.reject(error.message ?: "cannot open the folder picker")
+        }
+        startActivityForResult(invoke, intent, "onFolderPicked")
+    }
+
+    @ActivityCallback
+    fun onFolderPicked(invoke: Invoke, result: ActivityResult) {
+        val uri = result.data?.data
+        if (result.resultCode != Activity.RESULT_OK || uri == null) {
+            invoke.resolve()
+            return
+        }
+        scope.launch {
+            try {
+                library.takePersistableUriPermission(uri)
+                invoke.resolveObject(uri.toString())
+            } catch (error: Exception) {
+                invoke.reject(error.message ?: "cannot persist access to the picked folder")
+            }
+        }
+    }
+
+    @Command
+    fun persistedRoots(invoke: Invoke) {
+        scope.launch {
+            try {
+                invoke.resolveObject(library.persistedRoots())
+            } catch (error: Exception) {
+                invoke.reject(error.message ?: "cannot read persisted roots")
+            }
+        }
+    }
+
+    @Command
+    fun releaseRoot(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val treeUri = args.stringOrNull("treeUri") ?: return invoke.reject("releaseRoot: treeUri is required")
+        scope.launch {
+            try {
+                library.releaseRoot(treeUri)
+                invoke.resolve()
+            } catch (error: Exception) {
+                invoke.reject(error.message ?: "cannot release the root")
+            }
+        }
+    }
+
+    @Command
+    fun extractArtwork(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val uri = args.stringOrNull("uri") ?: return invoke.reject("extractArtwork: uri is required")
+        scope.launch {
+            try {
+                val artwork = library.extractArtwork(uri)
+                if (artwork == null) invoke.resolve() else invoke.resolveObject(artwork)
+            } catch (error: Exception) {
+                invoke.reject(error.message ?: "cannot extract the artwork")
+            }
+        }
+    }
+
+    // ── Внутреннее ──────────────────────────────────────────────────────────
+
+    /**
+     * Обход длинный и порционный — уводим его с главного потока и отвечаем по завершении
+     * порции. Найденное копится между вызовами, пока сканер не отдаст `complete`.
+     */
+    private fun runScan(invoke: Invoke, scan: () -> ScanBatchResult) {
+        scope.launch {
+            try {
+                val batch = scan()
+                val scanned = scannedSoFar.addAndGet(batch.tracks.size.toLong())
+                if (batch.complete) {
+                    scannedSoFar.set(0L)
+                    emitScanProgress(scanned, scanned, PHASE_DONE)
+                } else {
+                    // Сколько всего файлов, заранее неизвестно: total = 0 значит «прогресс не считаем».
+                    emitScanProgress(scanned, 0L, PHASE_READING)
+                }
+                invoke.resolve(MusicLibrary.toJson(batch))
+            } catch (error: Exception) {
+                scannedSoFar.set(0L)
+                emitScanProgress(0L, 0L, PHASE_IDLE)
+                invoke.reject(error.message ?: "scan failed")
+            }
+        }
+    }
+
+    private fun emitScanProgress(scanned: Long, total: Long, phase: String) {
+        trigger(
+            EVENT_SCAN_PROGRESS,
+            JSObject()
+                .put("scanned", scanned)
+                .put("total", total)
+                .put("phase", phase),
+        )
+    }
+
+    private fun argsOf(invoke: Invoke): JSObject? {
+        val args = invoke.argsOrNull()
+        if (args == null) {
+            invoke.reject("${invoke.command}: an arguments object is required")
+        }
+        return args
+    }
+
+    private inner class Events : PlaybackController.Listener {
+
+        override fun onState(state: PlaybackState) {
+            trigger(EVENT_STATE, state.toJson())
+        }
+
+        override fun onTrackChanged(trackId: Long?, index: Int) {
+            trigger(
+                EVENT_TRACK_CHANGED,
+                JSObject()
+                    .putOrNull("trackId", trackId)
+                    .put("index", index),
+            )
+        }
+
+        override fun onQueueChanged(trackIds: List<Long>) {
+            trigger(EVENT_QUEUE_CHANGED, JSObject().put("trackIds", jsArrayOfLongs(trackIds)))
+        }
+
+        override fun onCompleted(trackId: Long, durationPlayedMs: Long) {
+            trigger(
+                EVENT_COMPLETED,
+                JSObject()
+                    .put("trackId", trackId)
+                    .put("durationPlayedMs", durationPlayedMs),
+            )
+        }
+
+        override fun onError(code: String, message: String) {
+            trigger(
+                EVENT_ERROR,
+                JSObject()
+                    .put("code", code)
+                    .put("message", message),
+            )
+        }
+    }
+}

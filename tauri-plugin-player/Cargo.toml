@@ -1,0 +1,20 @@
+[package]
+name = "tauri-plugin-player"
+version = "0.1.0"
+description = "Native Android audio engine (Media3/ExoPlayer + MediaSessionService) and music library access for music.xima"
+edition = "2021"
+rust-version = "1.82"
+links = "tauri-plugin-player"
+
+[build-dependencies]
+tauri-plugin = { version = "2.6.3", features = ["build"] }
+
+[dependencies]
+tauri = { version = "2.11.5" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0.20"
+log = "0.4.33"
+
+[target.'cfg(target_os = "android")'.dependencies]
+# nothing extra: the bridge lives in tauri's mobile plugin API

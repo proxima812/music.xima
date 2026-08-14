@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-extract-artwork"
+description = "Enables the extract_artwork command without any pre-configured scope."
+commands.allow = ["extract_artwork"]
+
+[[permission]]
+identifier = "deny-extract-artwork"
+description = "Denies the extract_artwork command without any pre-configured scope."
+commands.deny = ["extract_artwork"]

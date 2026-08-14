@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-persisted-roots"
+description = "Enables the persisted_roots command without any pre-configured scope."
+commands.allow = ["persisted_roots"]
+
+[[permission]]
+identifier = "deny-persisted-roots"
+description = "Denies the persisted_roots command without any pre-configured scope."
+commands.deny = ["persisted_roots"]

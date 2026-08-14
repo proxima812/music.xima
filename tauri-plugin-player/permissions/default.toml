@@ -1,0 +1,39 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = """
+Full access to the native player: playback, queue editing, library scanning and
+the storage roots the user picked. The plugin is private to music.xima and the
+whole surface is needed by the app shell, so the default set allows every
+command from `build.rs` (CONTRACTS §7).
+"""
+permissions = [
+  # playback
+  "allow-get-state",
+  "allow-set-queue",
+  "allow-play",
+  "allow-pause",
+  "allow-toggle",
+  "allow-stop",
+  "allow-next",
+  "allow-previous",
+  "allow-seek",
+  "allow-skip-to",
+  "allow-set-shuffle",
+  "allow-set-repeat",
+  "allow-set-volume",
+  "allow-set-speed",
+  # queue
+  "allow-add-next",
+  "allow-add-to-queue",
+  "allow-remove-queue-item",
+  "allow-move-queue-item",
+  "allow-clear-queue",
+  # library / storage
+  "allow-scan-media-store",
+  "allow-scan-tree",
+  "allow-pick-folder",
+  "allow-persisted-roots",
+  "allow-release-root",
+  "allow-extract-artwork",
+]

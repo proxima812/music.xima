@@ -1,0 +1,102 @@
+/*
+ * music.xima — global stylesheet.
+ *
+ * @heroui/styles brings its own `@import "tailwindcss"` plus tw-animate-css,
+ * the base layer, every component's BEM stylesheet, the default theme
+ * (variables + component customisations), utilities and variants.
+ * Do NOT import tailwindcss again — it is already in here.
+ *
+ * Class/token reference: docs/HEROUI.md
+ */
+@import '@heroui/styles/css';
+
+/* Tell Tailwind v4 where to look for class names (no tailwind.config.js). */
+@source '../../src/**/*.{ts,tsx,html}';
+@source '../../index.html';
+
+/* ---------------------------------------------------------------------------
+ * App-level tokens layered on top of the HeroUI theme.
+ * Never hardcode colours in components — extend here instead.
+ * ------------------------------------------------------------------------- */
+@theme {
+  --spacing-nav: 4rem; /* bottom navigation height */
+  --spacing-mini-player: 4rem; /* mini player height */
+  --spacing-player-stack: 8rem; /* nav + mini player */
+  --ease-player: var(--ease-out-expo);
+}
+
+@layer base {
+  :root {
+    /* Safe areas — Android gesture nav / status bar. */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground overscroll-none antialiased;
+    /* A WebView is not a browser page: no rubber-banding, no text selection,
+       no long-press callout, no double-tap zoom. */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+    user-select: none;
+  }
+
+  /* Re-enable selection where it is actually useful. */
+  input,
+  textarea,
+  [contenteditable='true'] {
+    user-select: text;
+  }
+}
+
+@utility safe-top {
+  padding-top: var(--safe-top);
+}
+
+@utility safe-bottom {
+  padding-bottom: var(--safe-bottom);
+}
+
+/* Reserve room for the mini player + bottom nav at the end of scroll views. */
+@utility pb-player-stack {
+  padding-bottom: calc(var(--spacing-player-stack) + var(--safe-bottom));
+}
+
+/* ---------------------------------------------------------------------------
+ * Depth. Четыре слоя, и ничего между ними — иначе в тёмной теме всё сливается
+ * в один серый суп. Тень тут вторична: глубину держит тон подложки, тень лишь
+ * отрывает плавающие элементы от контента под ними.
+ *
+ *   0  bg-background          — сам экран
+ *   1  depth-raised           — карточки, строки, липкие панели
+ *   2  depth-floating         — мини-плеер, меню
+ *   3  depth-overlay          — шиты и диалоги поверх всего
+ * ------------------------------------------------------------------------- */
+@utility depth-raised {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+@utility depth-floating {
+  background-color: var(--color-surface-secondary);
+  box-shadow: var(--shadow-surface);
+}
+
+@utility depth-overlay {
+  background-color: var(--color-overlay);
+  box-shadow: var(--shadow-overlay);
+}
+
+/* Липкие панели: тот же тон, что экран, но с размытием — под ними едет контент. */
+@utility depth-bar {
+  background-color: color-mix(in oklab, var(--color-background) 84%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+}

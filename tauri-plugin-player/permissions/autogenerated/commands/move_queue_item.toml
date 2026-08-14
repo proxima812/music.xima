@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-move-queue-item"
+description = "Enables the move_queue_item command without any pre-configured scope."
+commands.allow = ["move_queue_item"]
+
+[[permission]]
+identifier = "deny-move-queue-item"
+description = "Denies the move_queue_item command without any pre-configured scope."
+commands.deny = ["move_queue_item"]

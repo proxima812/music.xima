@@ -1,0 +1,8 @@
+{
+  "name": "tauri-plugin-player-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./guest-js/index.ts",
+  "types": "./guest-js/index.ts"
+}

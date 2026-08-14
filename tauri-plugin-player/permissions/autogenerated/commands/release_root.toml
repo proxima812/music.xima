@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-release-root"
+description = "Enables the release_root command without any pre-configured scope."
+commands.allow = ["release_root"]
+
+[[permission]]
+identifier = "deny-release-root"
+description = "Denies the release_root command without any pre-configured scope."
+commands.deny = ["release_root"]
