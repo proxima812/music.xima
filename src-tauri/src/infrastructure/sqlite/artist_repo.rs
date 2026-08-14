@@ -22,11 +22,17 @@ impl SqliteArtistRepository {
 #[async_trait::async_trait]
 impl ArtistRepository for SqliteArtistRepository {
     async fn get(&self, id: i64) -> CoreResult<Artist> {
-        let row = dyn_query(format!("{ARTIST_SELECT} WHERE ar.id = ?"))
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?
-            .ok_or_else(|| CoreError::not_found("artist", id))?;
+        let row = dyn_query(format!(
+            "{ARTIST_SELECT} WHERE ar.id = ? AND EXISTS (\
+               SELECT 1 FROM tracks t WHERE t.artist_id = ar.id AND NOT EXISTS (\
+                 SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id\
+               )\
+             )"
+        ))
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| CoreError::not_found("artist", id))?;
         Ok(artist_from_row(&row)?)
     }
 
@@ -34,16 +40,26 @@ impl ArtistRepository for SqliteArtistRepository {
         let offset = clamp_offset(offset);
         let limit = clamp_limit(limit);
 
-        let total: i64 = sqlx::query("SELECT COUNT(*) AS total FROM artists")
-            .fetch_one(&self.pool)
-            .await?
-            .try_get("total")?;
+        let total: i64 = sqlx::query(
+            "SELECT COUNT(*) AS total FROM artists ar WHERE EXISTS (\
+               SELECT 1 FROM tracks t WHERE t.artist_id = ar.id AND NOT EXISTS (\
+                 SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id\
+               )\
+             )",
+        )
+        .fetch_one(&self.pool)
+        .await?
+        .try_get("total")?;
         if total <= offset {
             return Ok(Page::new(Vec::new(), total, offset, limit));
         }
 
         let rows = dyn_query(format!(
-            "{ARTIST_SELECT} ORDER BY ar.sort_name ASC, ar.id ASC LIMIT ? OFFSET ?"
+            "{ARTIST_SELECT} WHERE EXISTS (\
+               SELECT 1 FROM tracks t WHERE t.artist_id = ar.id AND NOT EXISTS (\
+                 SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id\
+               )\
+             ) ORDER BY ar.sort_name ASC, ar.id ASC LIMIT ? OFFSET ?"
         ))
         .bind(limit)
         .bind(offset)

@@ -9,7 +9,9 @@ use crate::error::CoreResult;
 use crate::infrastructure::repositories::HistoryRepository;
 
 use super::pool::Db;
-use super::sql::{dyn_query, ensure_track, tracks_from_rows, TRACK_COLUMNS, TRACK_JOINS};
+use super::sql::{
+    dyn_query, ensure_track, tracks_from_rows, TRACK_COLUMNS, TRACK_IS_VISIBLE, TRACK_JOINS,
+};
 
 pub struct SqliteHistoryRepository {
     pool: Db,
@@ -64,6 +66,7 @@ impl HistoryRepository for SqliteHistoryRepository {
         let rows = dyn_query(format!(
             "SELECT {TRACK_COLUMNS}, MAX(h.played_at) AS played_at \
              FROM history h JOIN tracks t ON t.id = h.track_id {TRACK_JOINS} \
+             WHERE {TRACK_IS_VISIBLE} \
              GROUP BY t.id ORDER BY played_at DESC LIMIT ?"
         ))
         .bind(clamp_limit(limit))

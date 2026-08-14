@@ -11,7 +11,8 @@ use crate::infrastructure::repositories::SearchRepository;
 use super::pool::Db;
 use super::sql::{
     album_from_row, artist_from_row, dyn_query, fts_match, like_contains, playlist_from_row,
-    tracks_from_rows, ALBUM_SELECT, ARTIST_SELECT, PLAYLIST_SELECT, TRACK_COLUMNS, TRACK_JOINS,
+    tracks_from_rows, ALBUM_SELECT, ARTIST_SELECT, PLAYLIST_SELECT, TRACK_COLUMNS,
+    TRACK_IS_VISIBLE, TRACK_JOINS,
 };
 
 pub struct SqliteSearchRepository {
@@ -31,7 +32,7 @@ impl SqliteSearchRepository {
         let rows = dyn_query(format!(
             "SELECT {TRACK_COLUMNS} FROM tracks_fts \
              JOIN tracks t ON t.id = tracks_fts.rowid {TRACK_JOINS} \
-             WHERE tracks_fts MATCH ? \
+             WHERE tracks_fts MATCH ? AND {TRACK_IS_VISIBLE} \
              ORDER BY bm25(tracks_fts), t.sort_title ASC, t.id ASC LIMIT ?"
         ))
         .bind(expression)
@@ -60,7 +61,11 @@ impl SqliteSearchRepository {
 
     async fn matching_artists(&self, pattern: &str, limit: i64) -> CoreResult<Vec<Artist>> {
         let rows = dyn_query(format!(
-            "{ARTIST_SELECT} WHERE ar.name LIKE ? ESCAPE '\\' \
+            "{ARTIST_SELECT} WHERE ar.name LIKE ? ESCAPE '\\' AND EXISTS (\
+               SELECT 1 FROM tracks t WHERE t.artist_id = ar.id AND NOT EXISTS (\
+                 SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id\
+               )\
+             ) \
              ORDER BY ar.sort_name ASC, ar.id ASC LIMIT ?"
         ))
         .bind(pattern.to_owned())

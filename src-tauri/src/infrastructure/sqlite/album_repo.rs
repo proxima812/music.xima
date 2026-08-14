@@ -34,10 +34,16 @@ impl AlbumRepository for SqliteAlbumRepository {
         let offset = clamp_offset(offset);
         let limit = clamp_limit(limit);
 
-        let total: i64 = sqlx::query("SELECT COUNT(*) AS total FROM albums")
-            .fetch_one(&self.pool)
-            .await?
-            .try_get("total")?;
+        let total: i64 = sqlx::query(
+            "SELECT COUNT(*) AS total FROM albums al WHERE EXISTS (\
+               SELECT 1 FROM tracks t WHERE t.album_id = al.id AND NOT EXISTS (\
+                 SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id\
+               )\
+             )",
+        )
+        .fetch_one(&self.pool)
+        .await?
+        .try_get("total")?;
         if total <= offset {
             return Ok(Page::new(Vec::new(), total, offset, limit));
         }
@@ -65,7 +71,9 @@ impl AlbumRepository for SqliteAlbumRepository {
             "{ALBUM_SELECT} \
              WHERE al.artist_id = ? \
                 OR al.id IN (SELECT album_id FROM tracks \
-                             WHERE artist_id = ? AND album_id IS NOT NULL) \
+                             WHERE artist_id = ? AND album_id IS NOT NULL \
+                               AND NOT EXISTS (SELECT 1 FROM hidden_tracks hidden \
+                                               WHERE hidden.track_id = tracks.id)) \
              GROUP BY al.id \
              ORDER BY al.year DESC, al.sort_title ASC, al.id ASC"
         ))

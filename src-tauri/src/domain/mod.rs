@@ -14,6 +14,7 @@ pub mod sort;
 pub mod stats;
 pub mod taxonomy;
 pub mod track;
+pub mod track_removal;
 
 pub use album::Album;
 pub use artist::Artist;
@@ -32,3 +33,4 @@ pub use sort::normalize_sort_key;
 pub use stats::{RankedTrack, StatsRange, MS_PER_DAY};
 pub use taxonomy::{folder_name, folder_parent, Folder, Genre, FOLDER_SEPARATOR};
 pub use track::Track;
+pub use track_removal::{DeleteTrackResult, FileDeleteOutcome, HiddenTrack, PendingDeletion};

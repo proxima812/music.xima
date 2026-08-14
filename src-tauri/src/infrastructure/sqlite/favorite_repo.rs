@@ -5,7 +5,9 @@ use crate::error::CoreResult;
 use crate::infrastructure::repositories::FavoriteRepository;
 
 use super::pool::Db;
-use super::sql::{dyn_query, ensure_track, now_ms, track_select, tracks_from_rows};
+use super::sql::{
+    dyn_query, ensure_track, now_ms, track_select, tracks_from_rows, TRACK_IS_VISIBLE,
+};
 
 pub struct SqliteFavoriteRepository {
     pool: Db,
@@ -48,7 +50,8 @@ impl FavoriteRepository for SqliteFavoriteRepository {
     /// Most recently favorited first.
     async fn list(&self) -> CoreResult<Vec<Track>> {
         let rows = dyn_query(format!(
-            "{} WHERE f.track_id IS NOT NULL ORDER BY f.created_at DESC, t.id DESC",
+            "{} WHERE f.track_id IS NOT NULL AND {TRACK_IS_VISIBLE} \
+             ORDER BY f.created_at DESC, t.id DESC",
             track_select()
         ))
         .fetch_all(&self.pool)

@@ -13,7 +13,7 @@ use crate::infrastructure::repositories::StatisticsRepository;
 use super::pool::Db;
 use super::sql::{
     dyn_query, now_ms, track_from_row, track_select, tracks_from_rows, COUNTS_AS_PLAY,
-    TRACK_COLUMNS, TRACK_JOINS,
+    TRACK_COLUMNS, TRACK_IS_VISIBLE, TRACK_JOINS,
 };
 
 pub struct SqliteStatisticsRepository {
@@ -40,7 +40,7 @@ impl StatisticsRepository for SqliteStatisticsRepository {
             "SELECT {TRACK_COLUMNS}, COUNT(*) AS plays, \
              COALESCE(SUM(h.duration_played_ms), 0) AS listening_time_ms \
              FROM history h JOIN tracks t ON t.id = h.track_id {TRACK_JOINS} \
-             WHERE {COUNTS_AS_PLAY}"
+             WHERE {COUNTS_AS_PLAY} AND {TRACK_IS_VISIBLE}"
         ));
         push_range(&mut builder, range);
         builder.push(
@@ -64,7 +64,8 @@ impl StatisticsRepository for SqliteStatisticsRepository {
     /// `NEVER_PLAYED` smart rule looks at.
     async fn never_played(&self, limit: i64) -> CoreResult<Vec<Track>> {
         let rows = dyn_query(format!(
-            "{} WHERE COALESCE(pc.count, 0) = 0 ORDER BY t.date_added DESC, t.id DESC LIMIT ?",
+            "{} WHERE COALESCE(pc.count, 0) = 0 AND {TRACK_IS_VISIBLE} \
+             ORDER BY t.date_added DESC, t.id DESC LIMIT ?",
             track_select()
         ))
         .bind(clamp_limit(limit))
@@ -79,6 +80,7 @@ impl StatisticsRepository for SqliteStatisticsRepository {
         let cutoff = now_ms().saturating_sub(days.saturating_mul(MS_PER_DAY));
         let rows = dyn_query(format!(
             "{} WHERE pc.last_played_at IS NOT NULL AND pc.last_played_at < ? \
+             AND {TRACK_IS_VISIBLE} \
              ORDER BY pc.last_played_at ASC, t.id ASC LIMIT ?",
             track_select()
         ))

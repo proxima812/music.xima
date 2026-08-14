@@ -15,7 +15,7 @@ use crate::infrastructure::repositories::PlaylistRepository;
 use super::pool::Db;
 use super::sql::{
     dyn_query, ensure_playlist, now_ms, playlist_from_row, tracks_from_rows, PLAYLIST_SELECT,
-    TRACK_COLUMNS, TRACK_JOINS,
+    TRACK_COLUMNS, TRACK_IS_VISIBLE, TRACK_JOINS,
 };
 
 pub struct SqlitePlaylistRepository {
@@ -36,7 +36,7 @@ fn playlist_tracks_sql() -> String {
     format!(
         "SELECT {TRACK_COLUMNS} FROM playlist_tracks pt \
          JOIN tracks t ON t.id = pt.track_id {TRACK_JOINS} \
-         WHERE pt.playlist_id = ? ORDER BY pt.position ASC"
+         WHERE pt.playlist_id = ? AND {TRACK_IS_VISIBLE} ORDER BY pt.position ASC"
     )
 }
 

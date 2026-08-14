@@ -17,6 +17,7 @@ use crate::infrastructure::repositories::SmartPlaylistRepository;
 use super::pool::Db;
 use super::sql::{
     dyn_query, like_contains, now_ms, track_order_by, track_select, tracks_from_rows,
+    TRACK_IS_VISIBLE,
 };
 
 pub struct SqliteSmartPlaylistRepository {
@@ -231,9 +232,10 @@ impl SmartPlaylistRepository for SqliteSmartPlaylistRepository {
 
         let now = now_ms();
         let mut builder = QueryBuilder::<Sqlite>::new(track_select());
+        builder.push(" WHERE ").push(TRACK_IS_VISIBLE);
 
         if !rules.is_empty() {
-            builder.push(" WHERE ");
+            builder.push(" AND (");
             let joiner = if match_all { " AND " } else { " OR " };
             for (index, rule) in rules.iter().enumerate() {
                 if index > 0 {
@@ -241,6 +243,7 @@ impl SmartPlaylistRepository for SqliteSmartPlaylistRepository {
                 }
                 push_rule(&mut builder, rule, now);
             }
+            builder.push(")");
         }
 
         match sort.as_track_sort() {

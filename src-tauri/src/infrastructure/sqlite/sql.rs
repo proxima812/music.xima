@@ -48,6 +48,11 @@ pub const MIN_PLAY_MS: i64 = 30_000;
 pub const COUNTS_AS_PLAY: &str = "(h.duration_played_ms >= 30000 \
      OR (t.duration_ms > 0 AND h.duration_played_ms * 2 >= t.duration_ms))";
 
+/// Visibility predicate for queries that alias `tracks` as `t`.
+pub const TRACK_IS_VISIBLE: &str = "NOT EXISTS (\
+     SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id\
+     )";
+
 /// Every column of [`Track`], resolved in a single pass. Requires the
 /// `t`/`ar`/`al`/`f`/`pc` aliases from [`TRACK_JOINS`].
 pub const TRACK_COLUMNS: &str = "t.id AS id, \
@@ -98,18 +103,25 @@ pub const ALBUM_SELECT: &str = "SELECT al.id AS id, \
      COALESCE(SUM(t.duration_ms), 0) AS duration_ms \
      FROM albums al \
      LEFT JOIN artists ar ON ar.id = al.artist_id \
-     LEFT JOIN tracks t ON t.album_id = al.id";
+     JOIN tracks t ON t.album_id = al.id AND NOT EXISTS (\
+       SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id\
+     )";
 
 /// Aggregated artist row. Counts come from correlated subqueries so callers can
 /// add a plain `WHERE` without worrying about grouping.
 pub const ARTIST_SELECT: &str = "SELECT ar.id AS id, \
      ar.name AS name, \
      (SELECT COUNT(DISTINCT t.album_id) FROM tracks t \
-        WHERE t.artist_id = ar.id AND t.album_id IS NOT NULL) AS album_count, \
-     (SELECT COUNT(*) FROM tracks t WHERE t.artist_id = ar.id) AS track_count, \
+        WHERE t.artist_id = ar.id AND t.album_id IS NOT NULL AND NOT EXISTS (\
+          SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id\
+        )) AS album_count, \
+     (SELECT COUNT(*) FROM tracks t WHERE t.artist_id = ar.id AND NOT EXISTS (\
+        SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id\
+     )) AS track_count, \
      (SELECT COALESCE(t.cover_key, al.cover_key) FROM tracks t \
         LEFT JOIN albums al ON al.id = t.album_id \
         WHERE t.artist_id = ar.id AND COALESCE(t.cover_key, al.cover_key) IS NOT NULL \
+          AND NOT EXISTS (SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id) \
         LIMIT 1) AS cover_key \
      FROM artists ar";
 
@@ -117,19 +129,22 @@ pub const ARTIST_SELECT: &str = "SELECT ar.id AS id, \
 /// `GROUP BY p.id`.
 pub const PLAYLIST_SELECT: &str = "SELECT p.id AS id, \
      p.name AS name, \
-     COUNT(pt.track_id) AS track_count, \
+     COUNT(t.id) AS track_count, \
      COALESCE(SUM(t.duration_ms), 0) AS duration_ms, \
      (SELECT COALESCE(t2.cover_key, al2.cover_key) FROM playlist_tracks pt2 \
         JOIN tracks t2 ON t2.id = pt2.track_id \
         LEFT JOIN albums al2 ON al2.id = t2.album_id \
         WHERE pt2.playlist_id = p.id \
+          AND NOT EXISTS (SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t2.id) \
           AND COALESCE(t2.cover_key, al2.cover_key) IS NOT NULL \
         ORDER BY pt2.position ASC LIMIT 1) AS cover_key, \
      p.created_at AS created_at, \
      p.updated_at AS updated_at \
      FROM playlists p \
      LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id \
-     LEFT JOIN tracks t ON t.id = pt.track_id";
+     LEFT JOIN tracks t ON t.id = pt.track_id AND NOT EXISTS (\
+       SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id\
+     )";
 
 pub fn track_from_row(row: &SqliteRow) -> Result<Track, sqlx::Error> {
     Ok(Track {
@@ -361,6 +376,7 @@ pub async fn tracks_by_ids(pool: &Db, ids: &[i64]) -> CoreResult<Vec<Track>> {
             }
         }
         builder.push(")");
+        builder.push(" AND ").push(TRACK_IS_VISIBLE);
         for row in builder.build().fetch_all(pool).await? {
             let track = track_from_row(&row)?;
             found.insert(track.id, track);

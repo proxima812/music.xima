@@ -23,15 +23,17 @@ impl SqliteTaxonomyRepository {
 /// Genres differing only in case are one genre; `MIN` picks the spelling shown
 /// to the user deterministically instead of leaving it to the group scan.
 const GENRES_SQL: &str = "SELECT MIN(TRIM(genre)) AS name, COUNT(*) AS track_count \
-     FROM tracks \
+     FROM tracks t \
      WHERE genre IS NOT NULL AND TRIM(genre) <> '' \
+       AND NOT EXISTS (SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id) \
      GROUP BY TRIM(genre) COLLATE NOCASE \
      ORDER BY name COLLATE NOCASE ASC";
 
 /// Distinct folder paths with the number of tracks sitting directly in them.
 const FOLDERS_SQL: &str = "SELECT folder AS path, COUNT(*) AS track_count \
-     FROM tracks \
+     FROM tracks t \
      WHERE folder IS NOT NULL AND TRIM(folder) <> '' \
+       AND NOT EXISTS (SELECT 1 FROM hidden_tracks hidden WHERE hidden.track_id = t.id) \
      GROUP BY folder";
 
 #[async_trait::async_trait]
