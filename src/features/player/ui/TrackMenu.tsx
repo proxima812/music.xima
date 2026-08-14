@@ -148,8 +148,17 @@ export function TrackMenu(props: TrackMenuProps) {
             label: 'Вернуть',
             ariaLabel: `Вернуть песню ${track.title}`,
             onClick: async () => {
-              await trackRestore(track.id)
-              toast({ title: 'Песня возвращена', variant: 'success' })
+              try {
+                await trackRestore(track.id)
+                toast({ title: 'Песня возвращена', variant: 'success' })
+              } catch (error: unknown) {
+                toast({
+                  title: 'Не удалось вернуть песню',
+                  description: toIpcError(error).message,
+                  variant: 'danger',
+                })
+                throw error
+              }
             },
           },
           duration: 8000,
@@ -176,18 +185,27 @@ export function TrackMenu(props: TrackMenuProps) {
       })
       .catch((error: unknown) => {
         const ipcError = toIpcError(error)
-        const unsupported = /unsupported|не поддерж|нельзя удалить|cannot delete/i.test(
-          ipcError.message,
+        const unsupported = ipcError.code === 'UNSUPPORTED_DELETE'
+        toast(
+          unsupported
+            ? {
+                title: 'Этот файл нельзя удалить через Android. Его можно скрыть из music.xima.',
+                variant: 'danger',
+              }
+            : {
+                title: 'Не удалось удалить файл',
+                description: ipcError.message,
+                variant: 'danger',
+              },
         )
-        toast({
-          title: unsupported
-            ? 'Этот файл нельзя удалить через Android. Его можно скрыть из music.xima.'
-            : 'Не удалось удалить файл',
-          description: unsupported ? undefined : ipcError.message,
-          variant: 'danger',
-        })
         throw error
       })
+
+  const deleteDescription = (): string => {
+    const track = trackToDelete()
+    const title = track?.title ?? ''
+    return `«${title}» будет удалена с устройства без возможности восстановления.`
+  }
 
   return (
     <>
@@ -396,11 +414,7 @@ export function TrackMenu(props: TrackMenuProps) {
           if (!open) setTrackToDelete(null)
         }}
         title="Удалить файл с устройства?"
-        description={
-          trackToDelete() === null
-            ? undefined
-            : `«${trackToDelete()?.title ?? ''}» будет удалена с устройства без возможности восстановления.`
-        }
+        description={deleteDescription()}
         confirmLabel="Удалить файл"
         danger
         onConfirm={() => {

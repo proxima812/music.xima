@@ -15,6 +15,7 @@ const IPC_ERROR_CODES: readonly IpcErrorCode[] = [
   'PLAYER',
   'SCAN',
   'IO',
+  'UNSUPPORTED_DELETE',
   'INTERNAL',
 ]
 

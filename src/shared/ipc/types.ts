@@ -13,6 +13,7 @@ export type IpcErrorCode =
   | 'PLAYER'
   | 'SCAN'
   | 'IO'
+  | 'UNSUPPORTED_DELETE'
   | 'INTERNAL'
 
 export type IpcError = {

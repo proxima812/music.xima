@@ -1,6 +1,6 @@
 import { useNavigate } from '@solidjs/router'
 import { ChevronLeft, EyeOff } from 'lucide-solid'
-import { createResource, createSignal, For, Match, Show, Switch } from 'solid-js'
+import { createResource, createSignal, For, Match, Switch } from 'solid-js'
 
 import { toIpcError, trackHidden, trackRestore, type HiddenTrack } from '@/shared/ipc'
 import { Button, EmptyState, IconButton, Screen, Spinner, TopBar, toast } from '@/shared/ui'

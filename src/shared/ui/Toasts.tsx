@@ -43,11 +43,12 @@ export function toast(options: ToastOptions): number {
       dismissToast(toastId)
     } catch (error: unknown) {
       console.error('[toast] действие не выполнено', error)
-      toast({
-        title: 'Не удалось выполнить действие',
-        description: error instanceof Error ? error.message : undefined,
-        variant: 'danger',
-      })
+      const description = error instanceof Error ? error.message : null
+      toast(
+        description === null
+          ? { title: 'Не удалось выполнить действие', variant: 'danger' }
+          : { title: 'Не удалось выполнить действие', description, variant: 'danger' },
+      )
     } finally {
       setActionPending(false)
     }
@@ -57,7 +58,7 @@ export function toast(options: ToastOptions): number {
     <Toast
       toastId={props.toastId}
       data-frontmost="true"
-      duration={options.duration}
+      duration={options.duration ?? 4000}
       class={cn('toast relative w-full', VARIANT_CLASS[options.variant ?? 'default'])}
     >
       <div class="toast__content">
