@@ -11,7 +11,7 @@ pub mod error;
 pub mod infrastructure;
 pub mod state;
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use tauri::{App, Manager, Runtime};
 
@@ -186,27 +186,31 @@ fn setup<R: Runtime>(app: &mut App<R>) -> CoreResult<()> {
         },
     )?;
 
-    if let Err(error) = tauri::async_runtime::block_on(player.refresh_queue()) {
-        log::warn!(
-            "native queue could not be synchronized before recovery [{}]: {error}",
-            error.code()
-        );
-    }
-
-    match tauri::async_runtime::block_on(track_removal.recover_pending()) {
-        Ok(failures) => {
-            for (track_id, error) in failures {
-                log::warn!(
-                    "track removal recovery failed for track {track_id} [{}]: {error}",
+    let recovery_player = player.clone();
+    let recovery_service = track_removal.clone();
+    tauri::async_runtime::spawn(async move {
+        match tokio::time::timeout(Duration::from_secs(5), recovery_player.refresh_queue()).await {
+            Ok(Ok(_)) => match recovery_service.recover_pending().await {
+                Ok(failures) => {
+                    for (track_id, error) in failures {
+                        log::warn!(
+                            "track removal recovery failed for track {track_id} [{}]: {error}",
+                            error.code()
+                        );
+                    }
+                }
+                Err(error) => log::warn!(
+                    "track removal recovery could not load pending rows [{}]: {error}",
                     error.code()
-                );
-            }
+                ),
+            },
+            Ok(Err(error)) => log::warn!(
+                "track removal recovery skipped: native queue sync failed [{}]: {error}",
+                error.code()
+            ),
+            Err(_) => log::warn!("track removal recovery skipped: native queue sync timed out"),
         }
-        Err(error) => log::warn!(
-            "track removal recovery could not load pending rows [{}]: {error}",
-            error.code()
-        ),
-    }
+    });
 
     app.manage(AppState {
         library,

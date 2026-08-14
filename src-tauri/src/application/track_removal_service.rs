@@ -46,9 +46,11 @@ impl TrackRemovalService {
     }
 
     pub async fn hide(&self, track_id: i64) -> CoreResult<()> {
-        self.tracks.hide(track_id, self.clock.now_ms()).await?;
+        let inserted = self.tracks.hide(track_id, self.clock.now_ms()).await?;
         if let Err(error) = self.player.remove_track(track_id).await {
-            self.tracks.restore(track_id).await?;
+            if inserted {
+                self.tracks.restore(track_id).await?;
+            }
             return Err(error);
         }
         Ok(())
@@ -217,13 +219,17 @@ mod tests {
             Ok(Vec::new())
         }
 
-        async fn hide(&self, track_id: i64, hidden_at: i64) -> CoreResult<()> {
+        async fn hide(&self, track_id: i64, hidden_at: i64) -> CoreResult<bool> {
             self.calls.lock().expect("lock").push("hide".into());
-            self.hidden.lock().expect("lock").push(HiddenTrack {
-                track: track(track_id),
-                hidden_at,
-            });
-            Ok(())
+            let mut hidden = self.hidden.lock().expect("lock");
+            let inserted = !hidden.iter().any(|row| row.track.id == track_id);
+            if inserted {
+                hidden.push(HiddenTrack {
+                    track: track(track_id),
+                    hidden_at,
+                });
+            }
+            Ok(inserted)
         }
 
         async fn restore(&self, track_id: i64) -> CoreResult<()> {
@@ -502,6 +508,30 @@ mod tests {
         assert_eq!(
             *harness.calls.lock().expect("lock"),
             vec!["hide", "queue_remove", "queue_remove", "restore"]
+        );
+    }
+
+    #[tokio::test]
+    async fn retrying_an_already_hidden_track_does_not_rollback_its_tombstone() {
+        let harness = harness(vec![1, 1], DeleteBehavior::Deleted);
+        harness
+            .tracks
+            .hidden
+            .lock()
+            .expect("lock")
+            .push(HiddenTrack {
+                track: track(1),
+                hidden_at: NOW - 1,
+            });
+        *harness.player.fail_remove_at.lock().expect("lock") = Some(1);
+
+        let error = harness.service.hide(1).await.expect_err("queue failure");
+
+        assert_eq!(error.code(), "PLAYER");
+        assert_eq!(harness.service.hidden().await.expect("hidden").len(), 1);
+        assert_eq!(
+            *harness.calls.lock().expect("lock"),
+            vec!["hide", "queue_remove"]
         );
     }
 

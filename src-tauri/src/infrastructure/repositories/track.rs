@@ -9,7 +9,8 @@ pub trait TrackRepository: Send + Sync {
     async fn get_many(&self, ids: &[i64]) -> CoreResult<Vec<Track>>;
     async fn query(&self, q: &TrackQuery) -> CoreResult<Page<Track>>;
     async fn recently_added(&self, limit: i64) -> CoreResult<Vec<Track>>;
-    async fn hide(&self, _track_id: i64, _hidden_at: i64) -> CoreResult<()> {
+    /// Returns `true` only when this call inserted the tombstone.
+    async fn hide(&self, _track_id: i64, _hidden_at: i64) -> CoreResult<bool> {
         Err(CoreError::internal("track removal is not implemented"))
     }
     async fn restore(&self, _track_id: i64) -> CoreResult<()> {

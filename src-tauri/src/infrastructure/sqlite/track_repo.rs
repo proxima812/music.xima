@@ -244,7 +244,7 @@ impl TrackRepository for SqliteTrackRepository {
         Ok(tracks)
     }
 
-    async fn hide(&self, track_id: i64, hidden_at: i64) -> CoreResult<()> {
+    async fn hide(&self, track_id: i64, hidden_at: i64) -> CoreResult<bool> {
         let mut tx = self.pool.begin().await?;
         let result = sqlx::query(
             "INSERT INTO hidden_tracks (track_id, uri, hidden_at) \
@@ -255,11 +255,12 @@ impl TrackRepository for SqliteTrackRepository {
         .bind(track_id)
         .execute(&mut *tx)
         .await?;
-        if result.rows_affected() == 0 {
+        let inserted = result.rows_affected() > 0;
+        if !inserted {
             super::sql::ensure_track(&mut tx, track_id).await?;
         }
         tx.commit().await?;
-        Ok(())
+        Ok(inserted)
     }
 
     async fn restore(&self, track_id: i64) -> CoreResult<()> {
@@ -739,9 +740,9 @@ mod tests {
             .await
             .expect("favorite");
 
-        repo.hide(ids[0], 100).await.expect("hide old");
-        repo.hide(ids[1], 200).await.expect("hide new");
-        repo.hide(ids[0], 999).await.expect("idempotent hide");
+        assert!(repo.hide(ids[0], 100).await.expect("hide old"));
+        assert!(repo.hide(ids[1], 200).await.expect("hide new"));
+        assert!(!repo.hide(ids[0], 999).await.expect("idempotent hide"));
         let hidden = repo.hidden().await.expect("hidden tracks");
         assert_eq!(
             hidden.iter().map(|item| item.track.id).collect::<Vec<_>>(),
