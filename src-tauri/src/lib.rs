@@ -176,6 +176,23 @@ fn setup<R: Runtime>(app: &mut App<R>) -> CoreResult<()> {
             .with_progress(scan_progress),
     );
 
+    subscribe(
+        &handle,
+        EventSinks {
+            queue,
+            player: player.clone(),
+            history: history.clone(),
+            scan: scan.clone(),
+        },
+    )?;
+
+    if let Err(error) = tauri::async_runtime::block_on(player.refresh_queue()) {
+        log::warn!(
+            "native queue could not be synchronized before recovery [{}]: {error}",
+            error.code()
+        );
+    }
+
     match tauri::async_runtime::block_on(track_removal.recover_pending()) {
         Ok(failures) => {
             for (track_id, error) in failures {
@@ -190,16 +207,6 @@ fn setup<R: Runtime>(app: &mut App<R>) -> CoreResult<()> {
             error.code()
         ),
     }
-
-    subscribe(
-        &handle,
-        EventSinks {
-            queue,
-            player: player.clone(),
-            history: history.clone(),
-            scan: scan.clone(),
-        },
-    )?;
 
     app.manage(AppState {
         library,

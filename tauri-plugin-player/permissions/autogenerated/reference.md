@@ -8,6 +8,7 @@ command from `build.rs` (CONTRACTS §7).
 #### This default permission set includes the following:
 
 - `allow-get-state`
+- `allow-get-queue-ids`
 - `allow-set-queue`
 - `allow-play`
 - `allow-pause`
@@ -170,6 +171,32 @@ Enables the extract_artwork command without any pre-configured scope.
 <td>
 
 Denies the extract_artwork command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`player:allow-get-queue-ids`
+
+</td>
+<td>
+
+Enables the get_queue_ids command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`player:deny-get-queue-ids`
+
+</td>
+<td>
+
+Denies the get_queue_ids command without any pre-configured scope.
 
 </td>
 </tr>

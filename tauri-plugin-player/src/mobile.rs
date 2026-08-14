@@ -13,9 +13,9 @@ use tauri::{
 
 use crate::error::{Error, Result};
 use crate::models::{
-    DeleteFileResponse, PlaybackState, PlayerEvent, QueueItem, RepeatMode, ScanBatch,
-    SetQueueRequest, TrackFileExistsResponse, EVENT_COMPLETED, EVENT_ERROR, EVENT_QUEUE_CHANGED,
-    EVENT_SCAN_PROGRESS, EVENT_STATE, EVENT_TRACK_CHANGED,
+    DeleteFileResponse, PlaybackState, PlayerEvent, QueueIdsResponse, QueueItem, RepeatMode,
+    ScanBatch, SetQueueRequest, TrackFileExistsResponse, EVENT_COMPLETED, EVENT_ERROR,
+    EVENT_QUEUE_CHANGED, EVENT_SCAN_PROGRESS, EVENT_STATE, EVENT_TRACK_CHANGED,
 };
 
 const PLUGIN_IDENTIFIER: &str = "com.xima.music.player";
@@ -38,6 +38,10 @@ pub struct Player<R: Runtime>(PluginHandle<R>);
 impl<R: Runtime> Player<R> {
     pub fn get_state(&self) -> Result<PlaybackState> {
         Ok(self.0.run_mobile_plugin("getState", ())?)
+    }
+
+    pub fn get_queue_ids(&self) -> Result<QueueIdsResponse> {
+        Ok(self.0.run_mobile_plugin("getQueueIds", ())?)
     }
 
     pub fn set_queue(&self, req: SetQueueRequest) -> Result<()> {

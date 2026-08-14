@@ -11,8 +11,8 @@ use tauri::{plugin::PluginApi, AppHandle, Runtime};
 
 use crate::error::{Error, Result};
 use crate::models::{
-    DeleteFileResponse, PlaybackState, PlayerEvent, QueueItem, RepeatMode, ScanBatch,
-    SetQueueRequest, TrackFileExistsResponse,
+    DeleteFileResponse, PlaybackState, PlayerEvent, QueueIdsResponse, QueueItem, RepeatMode,
+    ScanBatch, SetQueueRequest, TrackFileExistsResponse,
 };
 
 pub fn init<R: Runtime, C: DeserializeOwned>(
@@ -28,6 +28,12 @@ pub struct Player<R: Runtime>(PhantomData<fn() -> R>);
 impl<R: Runtime> Player<R> {
     pub fn get_state(&self) -> Result<PlaybackState> {
         Ok(PlaybackState::idle())
+    }
+
+    pub fn get_queue_ids(&self) -> Result<QueueIdsResponse> {
+        Ok(QueueIdsResponse {
+            track_ids: Vec::new(),
+        })
     }
 
     pub fn set_queue(&self, _req: SetQueueRequest) -> Result<()> {

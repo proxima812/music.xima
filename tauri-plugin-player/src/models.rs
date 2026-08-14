@@ -98,6 +98,12 @@ pub struct SetQueueRequest {
     pub autoplay: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueIdsResponse {
+    pub track_ids: Vec<i64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScannedTrack {

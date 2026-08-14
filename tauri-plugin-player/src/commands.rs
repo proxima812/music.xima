@@ -8,8 +8,8 @@
 use tauri::{AppHandle, Runtime};
 
 use crate::models::{
-    DeleteFileResponse, PlaybackState, QueueItem, RepeatMode, ScanBatch, SetQueueRequest,
-    TrackFileExistsResponse,
+    DeleteFileResponse, PlaybackState, QueueIdsResponse, QueueItem, RepeatMode, ScanBatch,
+    SetQueueRequest, TrackFileExistsResponse,
 };
 use crate::{PlayerExt, Result};
 
@@ -26,6 +26,11 @@ where
 #[tauri::command]
 pub(crate) async fn get_state<R: Runtime>(app: AppHandle<R>) -> Result<PlaybackState> {
     app.player().get_state()
+}
+
+#[tauri::command]
+pub(crate) async fn get_queue_ids<R: Runtime>(app: AppHandle<R>) -> Result<QueueIdsResponse> {
+    blocking_plugin_call(move || app.player().get_queue_ids()).await
 }
 
 #[tauri::command]

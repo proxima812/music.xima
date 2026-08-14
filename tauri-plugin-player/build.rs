@@ -5,6 +5,7 @@
 const COMMANDS: &[&str] = &[
     // playback
     "get_state",
+    "get_queue_ids",
     "set_queue",
     "play",
     "pause",

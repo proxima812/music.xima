@@ -82,6 +82,9 @@ export type ScanBatch = {
 
 export const getState = (): Promise<PlaybackState> => invoke<PlaybackState>(`${PREFIX}get_state`)
 
+export const getQueueIds = (): Promise<number[]> =>
+  invoke<{ trackIds: number[] }>(`${PREFIX}get_queue_ids`).then((response) => response.trackIds)
+
 export const setQueue = (req: SetQueueRequest): Promise<void> =>
   invoke<void>(`${PREFIX}set_queue`, { req })
 

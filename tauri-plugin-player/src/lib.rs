@@ -42,6 +42,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("player")
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
+            commands::get_queue_ids,
             commands::set_queue,
             commands::play,
             commands::pause,

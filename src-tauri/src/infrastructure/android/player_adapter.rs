@@ -152,7 +152,9 @@ impl<R: Runtime> PlayerPort for AndroidPlayerAdapter<R> {
     }
 
     async fn queue_ids(&self) -> CoreResult<Vec<i64>> {
-        Ok(self.queue_snapshot())
+        let response = self.file_call(move |player| player.get_queue_ids()).await?;
+        *self.mirror() = response.track_ids.clone();
+        Ok(response.track_ids)
     }
 
     async fn set_queue(

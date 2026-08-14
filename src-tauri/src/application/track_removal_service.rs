@@ -47,7 +47,11 @@ impl TrackRemovalService {
 
     pub async fn hide(&self, track_id: i64) -> CoreResult<()> {
         self.tracks.hide(track_id, self.clock.now_ms()).await?;
-        self.player.remove_track(track_id).await
+        if let Err(error) = self.player.remove_track(track_id).await {
+            self.tracks.restore(track_id).await?;
+            return Err(error);
+        }
+        Ok(())
     }
 
     pub async fn restore(&self, track_id: i64) -> CoreResult<()> {
@@ -303,6 +307,7 @@ mod tests {
     struct FakePlayer {
         calls: Arc<Mutex<Vec<String>>>,
         queue: Mutex<Vec<i64>>,
+        fail_remove_at: Mutex<Option<i32>>,
     }
 
     #[async_trait::async_trait]
@@ -388,6 +393,9 @@ mod tests {
                     queue.remove(index);
                 }
             }
+            if *self.fail_remove_at.lock().expect("lock") == Some(index) {
+                return Err(CoreError::Player("partial queue removal".to_owned()));
+            }
             Ok(())
         }
 
@@ -405,6 +413,7 @@ mod tests {
         tracks: Arc<FakeTracks>,
         files: Arc<FakeFiles>,
         player: Arc<FakePlayer>,
+        player_service: Arc<PlayerService>,
         calls: Arc<Mutex<Vec<String>>>,
     }
 
@@ -424,12 +433,13 @@ mod tests {
         let player = Arc::new(FakePlayer {
             calls: calls.clone(),
             queue: Mutex::new(queue),
+            fail_remove_at: Mutex::new(None),
         });
         let player_service = Arc::new(PlayerService::new(tracks.clone(), player.clone()));
         let service = TrackRemovalService::with_clock(
             tracks.clone(),
             files.clone(),
-            player_service,
+            player_service.clone(),
             Arc::new(FixedClock(NOW)),
         );
         Harness {
@@ -437,6 +447,7 @@ mod tests {
             tracks,
             files,
             player,
+            player_service,
             calls,
         }
     }
@@ -470,6 +481,28 @@ mod tests {
             .await
             .expect("hidden list")
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn hide_rolls_back_the_tombstone_after_a_partial_queue_failure() {
+        let harness = harness(vec![1, 1, 1], DeleteBehavior::Deleted);
+        *harness.player.fail_remove_at.lock().expect("lock") = Some(1);
+
+        let error = harness.service.hide(1).await.expect_err("queue failure");
+
+        assert_eq!(error.code(), "PLAYER");
+        assert!(harness
+            .service
+            .hidden()
+            .await
+            .expect("hidden list")
+            .is_empty());
+        assert_eq!(*harness.player.queue.lock().expect("lock"), vec![1]);
+        assert_eq!(harness.player_service.queue_snapshot(), vec![1]);
+        assert_eq!(
+            *harness.calls.lock().expect("lock"),
+            vec!["hide", "queue_remove", "queue_remove", "restore"]
+        );
     }
 
     #[tokio::test]

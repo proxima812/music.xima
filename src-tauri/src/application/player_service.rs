@@ -123,6 +123,14 @@ impl PlayerService {
         *self.mirror() = track_ids;
     }
 
+    /// Pulls the queue directly from the native session. Used during startup
+    /// before event delivery can be relied on.
+    pub async fn refresh_queue(&self) -> CoreResult<Vec<i64>> {
+        let ids = self.player.queue_ids().await?;
+        *self.mirror() = ids.clone();
+        Ok(ids)
+    }
+
     pub async fn play(&self) -> CoreResult<()> {
         self.player.play().await
     }
@@ -223,7 +231,12 @@ impl PlayerService {
         for index in indexes {
             let native_index = i32::try_from(index)
                 .map_err(|_| CoreError::internal("native queue index exceeds i32"))?;
-            self.player.remove_queue_item(native_index).await?;
+            if let Err(error) = self.player.remove_queue_item(native_index).await {
+                if let Ok(actual) = self.player.queue_ids().await {
+                    *self.mirror() = actual;
+                }
+                return Err(error);
+            }
             queue.remove(index);
             *self.mirror() = queue.clone();
         }
@@ -361,6 +374,7 @@ mod tests {
         /// Empty means "this port keeps no mirror", which is the fallback case.
         queue_ids: Mutex<Vec<i64>>,
         fail_remove_at: Mutex<Option<i32>>,
+        mutate_on_failed_remove: Mutex<bool>,
     }
 
     impl FakePlayer {
@@ -466,6 +480,12 @@ mod tests {
         async fn remove_queue_item(&self, index: i32) -> CoreResult<()> {
             self.record(Call::Remove(index));
             if *self.fail_remove_at.lock().expect("lock") == Some(index) {
+                if *self.mutate_on_failed_remove.lock().expect("lock") {
+                    let mut queue = self.queue_ids.lock().expect("lock");
+                    if let Some(position) = super::slot(index, queue.len()) {
+                        queue.remove(position);
+                    }
+                }
                 return Err(CoreError::Player("remove failed".to_owned()));
             }
             let mut queue = self.queue_ids.lock().expect("lock");
@@ -768,6 +788,36 @@ mod tests {
         assert_eq!(error.code(), "PLAYER");
         assert_eq!(service.queue_snapshot(), vec![1, 2, 3]);
         assert_eq!(*player.queue_ids.lock().expect("lock"), vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn remove_track_resyncs_after_a_partial_native_failure() {
+        let (service, _, player) = service();
+        service.sync_queue(vec![1, 1, 1]);
+        *player.queue_ids.lock().expect("lock") = vec![1, 1, 1];
+        *player.fail_remove_at.lock().expect("lock") = Some(1);
+        *player.mutate_on_failed_remove.lock().expect("lock") = true;
+
+        let error = service
+            .remove_track(1)
+            .await
+            .expect_err("second native removal fails after mutation");
+
+        assert_eq!(error.code(), "PLAYER");
+        assert_eq!(*player.queue_ids.lock().expect("lock"), vec![1]);
+        assert_eq!(service.queue_snapshot(), vec![1]);
+    }
+
+    #[tokio::test]
+    async fn refresh_queue_replaces_the_mirror_with_authoritative_ids() {
+        let (service, _, player) = service();
+        service.sync_queue(vec![9]);
+        *player.queue_ids.lock().expect("lock") = vec![3, 2, 1];
+
+        let ids = service.refresh_queue().await.expect("queue refreshed");
+
+        assert_eq!(ids, vec![3, 2, 1]);
+        assert_eq!(service.queue_snapshot(), vec![3, 2, 1]);
     }
 
     #[tokio::test]

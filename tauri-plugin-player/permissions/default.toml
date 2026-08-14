@@ -10,6 +10,7 @@ command from `build.rs` (CONTRACTS §7).
 permissions = [
   # playback
   "allow-get-state",
+  "allow-get-queue-ids",
   "allow-set-queue",
   "allow-play",
   "allow-pause",

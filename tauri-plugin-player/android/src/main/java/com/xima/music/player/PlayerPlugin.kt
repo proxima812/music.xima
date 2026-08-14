@@ -80,6 +80,13 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @Command
+    fun getQueueIds(invoke: Invoke) {
+        controller.getQueueIds { ids ->
+            invoke.resolve(JSObject().put("trackIds", jsArrayOfLongs(ids)))
+        }
+    }
+
+    @Command
     fun setQueue(invoke: Invoke) {
         val args = argsOf(invoke) ?: return
         controller.setQueue(

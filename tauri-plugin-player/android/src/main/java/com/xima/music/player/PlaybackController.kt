@@ -106,6 +106,13 @@ internal class PlaybackController(
         return lastState
     }
 
+    /** Resolves only after MediaController attaches, so startup sees the service queue. */
+    fun getQueueIds(resolve: (List<Long>) -> Unit) = withPlayer { player ->
+        val ids = QueueMapper.trackIds(player)
+        queueIds = ids
+        resolve(ids)
+    }
+
     fun setQueue(items: List<QueueItem>, startIndex: Int, autoplay: Boolean) = withPlayer { player ->
         flushListening()
         if (items.isEmpty()) {
