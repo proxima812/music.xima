@@ -2,6 +2,7 @@ import { useNavigate } from '@solidjs/router'
 import {
   Disc3,
   EllipsisVertical,
+  EyeOff,
   Heart,
   Info,
   ListEnd,
@@ -9,6 +10,7 @@ import {
   ListStart,
   MicVocal,
   Plus,
+  Trash2,
 } from 'lucide-solid'
 import {
   createResource,
@@ -24,12 +26,17 @@ import {
   playlistAddTracks,
   playlistCreate,
   playlistList,
+  toIpcError,
+  trackDeleteFile,
+  trackHide,
+  trackRestore,
   type Playlist,
   type Track,
 } from '@/shared/ipc'
 import { formatBytes, formatCount, formatDate, formatDuration } from '@/shared/lib'
 import { Button } from '@/shared/ui/Button'
 import { EmptyState } from '@/shared/ui/EmptyState'
+import { ConfirmDialog } from '@/shared/ui/ConfirmDialog'
 import { IconButton } from '@/shared/ui/IconButton'
 import { Sheet } from '@/shared/ui/Sheet'
 import { Spinner } from '@/shared/ui/Spinner'
@@ -67,6 +74,7 @@ export function TrackMenu(props: TrackMenuProps) {
   const [selfOpen, setSelfOpen] = createSignal(false)
   const [panel, setPanel] = createSignal<Panel>('actions')
   const [newName, setNewName] = createSignal('')
+  const [trackToDelete, setTrackToDelete] = createSignal<Track | null>(null)
 
   const isControlled = (): boolean => props.open !== undefined
   const isOpen = (): boolean => (props.open ?? selfOpen()) && props.track !== null
@@ -129,6 +137,57 @@ export function TrackMenu(props: TrackMenuProps) {
         toast({ title: 'Не удалось создать плейлист', variant: 'danger' })
       })
   }
+
+  const hideTrack = (track: Track): void => {
+    void trackHide(track.id)
+      .then(() => {
+        setOpen(false)
+        toast({
+          title: 'Песня скрыта из music.xima',
+          action: {
+            label: 'Вернуть',
+            ariaLabel: `Вернуть песню ${track.title}`,
+            onClick: async () => {
+              await trackRestore(track.id)
+              toast({ title: 'Песня возвращена', variant: 'success' })
+            },
+          },
+          duration: 8000,
+        })
+      })
+      .catch((error: unknown) => {
+        console.error('[player] не удалось скрыть трек', error)
+        toast({
+          title: 'Не удалось скрыть песню',
+          description: toIpcError(error).message,
+          variant: 'danger',
+        })
+      })
+  }
+
+  const deleteTrackFile = (track: Track): Promise<void> =>
+    trackDeleteFile(track.id)
+      .then((result) => {
+        if (result === 'cancelled') return
+
+        setOpen(false)
+        props.onNavigate?.()
+        toast({ title: 'Файл удалён с устройства', variant: 'success' })
+      })
+      .catch((error: unknown) => {
+        const ipcError = toIpcError(error)
+        const unsupported = /unsupported|не поддерж|нельзя удалить|cannot delete/i.test(
+          ipcError.message,
+        )
+        toast({
+          title: unsupported
+            ? 'Этот файл нельзя удалить через Android. Его можно скрыть из music.xima.'
+            : 'Не удалось удалить файл',
+          description: unsupported ? undefined : ipcError.message,
+          variant: 'danger',
+        })
+        throw error
+      })
 
   return (
     <>
@@ -212,6 +271,24 @@ export function TrackMenu(props: TrackMenuProps) {
                     icon={<Info size={18} aria-hidden="true" />}
                     label="Сведения о файле"
                     onClick={() => setPanel('details')}
+                  />
+
+                  <ActionRow
+                    icon={<EyeOff size={18} aria-hidden="true" />}
+                    label="Скрыть из music.xima"
+                    onClick={withTrack(hideTrack)}
+                  />
+
+                  <div class="my-2 h-px bg-separator" role="separator" />
+
+                  <ActionRow
+                    icon={<Trash2 size={18} aria-hidden="true" />}
+                    label="Удалить файл с устройства"
+                    danger
+                    onClick={withTrack((value) => {
+                      setTrackToDelete(value)
+                      setOpen(false)
+                    })}
                   />
                 </div>
               </Match>
@@ -312,6 +389,25 @@ export function TrackMenu(props: TrackMenuProps) {
           )}
         </Show>
       </Sheet>
+
+      <ConfirmDialog
+        open={trackToDelete() !== null}
+        onOpenChange={(open) => {
+          if (!open) setTrackToDelete(null)
+        }}
+        title="Удалить файл с устройства?"
+        description={
+          trackToDelete() === null
+            ? undefined
+            : `«${trackToDelete()?.title ?? ''}» будет удалена с устройства без возможности восстановления.`
+        }
+        confirmLabel="Удалить файл"
+        danger
+        onConfirm={() => {
+          const track = trackToDelete()
+          return track === null ? undefined : deleteTrackFile(track)
+        }}
+      />
     </>
   )
 }
@@ -320,12 +416,24 @@ function ActionRow(props: {
   icon: JSX.Element
   label: string
   hint?: string
+  danger?: boolean
   onClick: () => void
 }) {
   return (
     <button type="button" class="menu-item min-h-11" onClick={() => props.onClick()}>
-      <span class="flex size-5 shrink-0 items-center justify-center text-muted">{props.icon}</span>
-      <span data-slot="label" class="flex-1 truncate text-start text-sm text-foreground">
+      <span
+        class={`flex size-5 shrink-0 items-center justify-center ${
+          props.danger === true ? 'text-danger' : 'text-muted'
+        }`}
+      >
+        {props.icon}
+      </span>
+      <span
+        data-slot="label"
+        class={`flex-1 truncate text-start text-sm ${
+          props.danger === true ? 'text-danger' : 'text-foreground'
+        }`}
+      >
         {props.label}
       </span>
       <Show when={props.hint}>
