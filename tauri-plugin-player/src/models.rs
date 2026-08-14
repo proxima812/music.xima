@@ -142,6 +142,27 @@ impl ScanBatch {
     }
 }
 
+/// Result of a native deletion request. Cancellation is an ordinary outcome:
+/// the database row must stay intact and the caller may retry later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeleteFileStatus {
+    Deleted,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteFileResponse {
+    pub status: DeleteFileStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackFileExistsResponse {
+    pub exists: bool,
+}
+
 /// Decoded `trigger()` payloads (CONTRACTS §7.2). The core crate re-emits these
 /// as the Tauri events of §6.
 #[derive(Debug, Clone, PartialEq)]
@@ -185,7 +206,28 @@ impl PlayerEvent {
 
 #[cfg(test)]
 mod tests {
-    use super::{PlaybackState, PlaybackStatus, PlayerEvent, QueueItem, RepeatMode, ScanBatch};
+    use super::{
+        DeleteFileResponse, DeleteFileStatus, PlaybackState, PlaybackStatus, PlayerEvent,
+        QueueItem, RepeatMode, ScanBatch, TrackFileExistsResponse,
+    };
+
+    #[test]
+    fn track_file_responses_use_the_closed_wire_contract() {
+        let deleted = serde_json::to_value(DeleteFileResponse {
+            status: DeleteFileStatus::Deleted,
+        })
+        .expect("delete response serializes");
+        assert_eq!(deleted, serde_json::json!({ "status": "deleted" }));
+
+        let cancelled: DeleteFileResponse =
+            serde_json::from_value(serde_json::json!({ "status": "cancelled" }))
+                .expect("cancelled response deserializes");
+        assert_eq!(cancelled.status, DeleteFileStatus::Cancelled);
+
+        let exists = serde_json::to_value(TrackFileExistsResponse { exists: false })
+            .expect("exists response serializes");
+        assert_eq!(exists, serde_json::json!({ "exists": false }));
+    }
 
     #[test]
     fn idle_state_is_neutral() {

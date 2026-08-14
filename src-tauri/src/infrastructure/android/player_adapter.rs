@@ -9,8 +9,8 @@ use std::sync::{Mutex, MutexGuard};
 
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_player::{
-    PlaybackState as NativePlaybackState, PlaybackStatus as NativePlaybackStatus, Player,
-    QueueItem, RepeatMode as NativeRepeatMode, SetQueueRequest,
+    DeleteFileStatus, PlaybackState as NativePlaybackState, PlaybackStatus as NativePlaybackStatus,
+    Player, QueueItem, RepeatMode as NativeRepeatMode, SetQueueRequest,
 };
 
 use crate::application::player_service::PlayerPort;
@@ -53,6 +53,34 @@ impl<R: Runtime> AndroidPlayerAdapter<R> {
 
     pub fn queue_snapshot(&self) -> Vec<i64> {
         self.mirror().clone()
+    }
+
+    /// Native file-deletion surface for the removal service integration.
+    /// A cancelled Android confirmation is returned as data, not an error.
+    pub async fn delete_track_file(&self, uri: &str) -> CoreResult<DeleteFileStatus> {
+        #[cfg(target_os = "android")]
+        {
+            return Ok(self.plugin()?.delete_track_file(uri.to_owned())?.status);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = uri;
+            Err(tauri_plugin_player::Error::UnsupportedDelete.into())
+        }
+    }
+
+    /// Read-only native existence probe. Provider/permission ambiguity stays
+    /// an error so crash recovery never removes a database row by mistake.
+    pub async fn track_file_exists(&self, uri: &str) -> CoreResult<bool> {
+        #[cfg(target_os = "android")]
+        {
+            return Ok(self.plugin()?.track_file_exists(uri.to_owned())?.exists);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = uri;
+            Err(tauri_plugin_player::Error::UnsupportedDelete.into())
+        }
     }
 
     fn mirror(&self) -> MutexGuard<'_, Vec<i64>> {

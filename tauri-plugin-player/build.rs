@@ -31,6 +31,8 @@ const COMMANDS: &[&str] = &[
     "persisted_roots",
     "release_root",
     "extract_artwork",
+    "delete_track_file",
+    "track_file_exists",
 ];
 
 fn main() {

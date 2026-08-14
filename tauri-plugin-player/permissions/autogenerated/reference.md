@@ -32,6 +32,8 @@ command from `build.rs` (CONTRACTS §7).
 - `allow-persisted-roots`
 - `allow-release-root`
 - `allow-extract-artwork`
+- `allow-delete-track-file`
+- `allow-track-file-exists`
 
 ## Permission Table
 
@@ -116,6 +118,32 @@ Enables the clear_queue command without any pre-configured scope.
 <td>
 
 Denies the clear_queue command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`player:allow-delete-track-file`
+
+</td>
+<td>
+
+Enables the delete_track_file command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`player:deny-delete-track-file`
+
+</td>
+<td>
+
+Denies the delete_track_file command without any pre-configured scope.
 
 </td>
 </tr>
@@ -688,6 +716,32 @@ Enables the toggle command without any pre-configured scope.
 <td>
 
 Denies the toggle command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`player:allow-track-file-exists`
+
+</td>
+<td>
+
+Enables the track_file_exists command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`player:deny-track-file-exists`
+
+</td>
+<td>
+
+Denies the track_file_exists command without any pre-configured scope.
 
 </td>
 </tr>

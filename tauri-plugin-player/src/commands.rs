@@ -7,7 +7,10 @@
 
 use tauri::{AppHandle, Runtime};
 
-use crate::models::{PlaybackState, QueueItem, RepeatMode, ScanBatch, SetQueueRequest};
+use crate::models::{
+    DeleteFileResponse, PlaybackState, QueueItem, RepeatMode, ScanBatch, SetQueueRequest,
+    TrackFileExistsResponse,
+};
 use crate::{PlayerExt, Result};
 
 #[tauri::command]
@@ -150,4 +153,20 @@ pub(crate) async fn extract_artwork<R: Runtime>(
     uri: String,
 ) -> Result<Option<String>> {
     app.player().extract_artwork(uri)
+}
+
+#[tauri::command]
+pub(crate) async fn delete_track_file<R: Runtime>(
+    app: AppHandle<R>,
+    uri: String,
+) -> Result<DeleteFileResponse> {
+    app.player().delete_track_file(uri)
+}
+
+#[tauri::command]
+pub(crate) async fn track_file_exists<R: Runtime>(
+    app: AppHandle<R>,
+    uri: String,
+) -> Result<TrackFileExistsResponse> {
+    app.player().track_file_exists(uri)
 }

@@ -11,10 +11,11 @@ use tauri::{
     AppHandle, Runtime,
 };
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::models::{
-    PlaybackState, PlayerEvent, QueueItem, RepeatMode, ScanBatch, SetQueueRequest, EVENT_COMPLETED,
-    EVENT_ERROR, EVENT_QUEUE_CHANGED, EVENT_SCAN_PROGRESS, EVENT_STATE, EVENT_TRACK_CHANGED,
+    DeleteFileResponse, PlaybackState, PlayerEvent, QueueItem, RepeatMode, ScanBatch,
+    SetQueueRequest, TrackFileExistsResponse, EVENT_COMPLETED, EVENT_ERROR, EVENT_QUEUE_CHANGED,
+    EVENT_SCAN_PROGRESS, EVENT_STATE, EVENT_TRACK_CHANGED,
 };
 
 const PLUGIN_IDENTIFIER: &str = "com.xima.music.player";
@@ -167,6 +168,18 @@ impl<R: Runtime> Player<R> {
             .run_mobile_plugin("extractArtwork", UriArgs { uri })?)
     }
 
+    pub fn delete_track_file(&self, uri: String) -> Result<DeleteFileResponse> {
+        self.0
+            .run_mobile_plugin("deleteTrackFile", UriArgs { uri })
+            .map_err(map_track_file_error)
+    }
+
+    pub fn track_file_exists(&self, uri: String) -> Result<TrackFileExistsResponse> {
+        self.0
+            .run_mobile_plugin("trackFileExists", UriArgs { uri })
+            .map_err(map_track_file_error)
+    }
+
     /// Subscribes to every `trigger()` the Kotlin plugin emits (CONTRACTS §7.2).
     /// One channel per event name; malformed payloads are logged and dropped so
     /// a single bad event cannot kill the stream.
@@ -239,6 +252,17 @@ impl<R: Runtime> Player<R> {
             },
         )?;
         Ok(())
+    }
+}
+
+fn map_track_file_error(error: tauri::plugin::mobile::PluginInvokeError) -> Error {
+    match &error {
+        tauri::plugin::mobile::PluginInvokeError::InvokeRejected(response)
+            if response.code.as_deref() == Some("UNSUPPORTED_DELETE") =>
+        {
+            Error::UnsupportedDelete
+        }
+        _ => Error::PluginInvoke(error),
     }
 }
 

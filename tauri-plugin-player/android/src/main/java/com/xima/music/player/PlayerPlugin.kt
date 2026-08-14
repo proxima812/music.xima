@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -30,6 +31,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val library by lazy { MusicLibrary(activity) }
+    private val trackFileDeleter by lazy { TrackFileDeleter(activity) }
     private val controller by lazy { PlaybackController(activity.applicationContext, Events()) }
 
     /** Найдено с начала текущего скана: сканер отдаёт треки порциями. */
@@ -275,6 +277,52 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
+    @Command
+    fun deleteTrackFile(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val uri = args.stringOrNull("uri") ?: return invoke.reject("deleteTrackFile: uri is required")
+        scope.launch {
+            try {
+                when (val action = trackFileDeleter.delete(uri)) {
+                    DeleteAction.Deleted -> invoke.resolveDeleteStatus(DeleteStatus.DELETED)
+                    is DeleteAction.Confirm -> withContext(Dispatchers.Main) {
+                        startIntentSenderForResult(
+                            invoke,
+                            action.request,
+                            "onTrackFileDeleteConfirmed",
+                        )
+                    }
+                }
+            } catch (error: TrackFileException) {
+                invoke.reject(error.message, error.code, error)
+            } catch (error: Exception) {
+                invoke.reject(error.message ?: "track file deletion failed", ERROR_DELETE_FAILED, error)
+            }
+        }
+    }
+
+    @ActivityCallback
+    fun onTrackFileDeleteConfirmed(invoke: Invoke, result: ActivityResult) {
+        invoke.resolveDeleteStatus(TrackFileDeleter.confirmationStatus(result.resultCode))
+    }
+
+    @Command
+    fun trackFileExists(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val uri = args.stringOrNull("uri") ?: return invoke.reject("trackFileExists: uri is required")
+        scope.launch {
+            try {
+                invoke.resolve(
+                    JSObject().put("exists", trackFileDeleter.exists(uri)),
+                )
+            } catch (error: TrackFileException) {
+                invoke.reject(error.message, error.code, error)
+            } catch (error: Exception) {
+                invoke.reject(error.message ?: "track file existence check failed", ERROR_EXISTS_FAILED, error)
+            }
+        }
+    }
+
     // ── Внутреннее ──────────────────────────────────────────────────────────
 
     /**
@@ -318,6 +366,10 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
             invoke.reject("${invoke.command}: an arguments object is required")
         }
         return args
+    }
+
+    private fun Invoke.resolveDeleteStatus(status: DeleteStatus) {
+        resolve(JSObject().put("status", status.token))
     }
 
     private inner class Events : PlaybackController.Listener {

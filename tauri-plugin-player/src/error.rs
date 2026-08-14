@@ -15,6 +15,10 @@ pub enum Error {
     #[error("player is not supported on this platform")]
     Unsupported,
 
+    /// Stable storage-specific error used by removal recovery and UI handling.
+    #[error("UNSUPPORTED_DELETE: native track deletion is not supported")]
+    UnsupportedDelete,
+
     /// The native side answered, but with something the plugin cannot use.
     #[error("native player error: {0}")]
     Native(String),
@@ -50,6 +54,10 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&Error::native("no media session")).expect("serializes"),
             "\"native player error: no media session\""
+        );
+        assert_eq!(
+            Error::UnsupportedDelete.to_string(),
+            "UNSUPPORTED_DELETE: native track deletion is not supported"
         );
     }
 }

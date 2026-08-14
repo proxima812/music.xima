@@ -36,4 +36,6 @@ permissions = [
   "allow-persisted-roots",
   "allow-release-root",
   "allow-extract-artwork",
+  "allow-delete-track-file",
+  "allow-track-file-exists",
 ]

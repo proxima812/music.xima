@@ -66,6 +66,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::persisted_roots,
             commands::release_root,
             commands::extract_artwork,
+            commands::delete_track_file,
+            commands::track_file_exists,
         ])
         .setup(|app, api| {
             #[cfg(target_os = "android")]

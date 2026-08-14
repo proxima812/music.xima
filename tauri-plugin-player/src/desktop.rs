@@ -11,7 +11,8 @@ use tauri::{plugin::PluginApi, AppHandle, Runtime};
 
 use crate::error::{Error, Result};
 use crate::models::{
-    PlaybackState, PlayerEvent, QueueItem, RepeatMode, ScanBatch, SetQueueRequest,
+    DeleteFileResponse, PlaybackState, PlayerEvent, QueueItem, RepeatMode, ScanBatch,
+    SetQueueRequest, TrackFileExistsResponse,
 };
 
 pub fn init<R: Runtime, C: DeserializeOwned>(
@@ -123,6 +124,14 @@ impl<R: Runtime> Player<R> {
 
     pub fn extract_artwork(&self, _uri: String) -> Result<Option<String>> {
         Ok(None)
+    }
+
+    pub fn delete_track_file(&self, _uri: String) -> Result<DeleteFileResponse> {
+        Err(Error::UnsupportedDelete)
+    }
+
+    pub fn track_file_exists(&self, _uri: String) -> Result<TrackFileExistsResponse> {
+        Err(Error::UnsupportedDelete)
     }
 
     /// Nothing ever fires here: the desktop stub has no native side to listen
