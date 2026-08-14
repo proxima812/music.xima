@@ -13,6 +13,7 @@ pub mod playlist_service;
 pub mod scan_service;
 pub mod search_service;
 pub mod statistics_service;
+pub mod track_removal_service;
 
 pub use history_service::HistoryService;
 pub use library_service::LibraryService;
@@ -21,6 +22,7 @@ pub use playlist_service::PlaylistService;
 pub use scan_service::{ProgressCallback, ScanBatch, ScanService, ScannerPort, MEDIA_STORE_ROOT};
 pub use search_service::SearchService;
 pub use statistics_service::StatisticsService;
+pub use track_removal_service::{RecoveryFailure, TrackFilePort, TrackRemovalService};
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

@@ -17,7 +17,7 @@ use tauri::{App, Manager, Runtime};
 
 use crate::application::{
     HistoryService, LibraryService, PlayerService, PlaylistService, ProgressCallback, ScanService,
-    SearchService, StatisticsService,
+    SearchService, StatisticsService, TrackRemovalService,
 };
 use crate::error::CoreResult;
 use crate::infrastructure::android::{
@@ -118,6 +118,10 @@ pub fn run() {
             commands::player::player_remove_queue_item,
             commands::player::player_move_queue_item,
             commands::player::player_clear_queue,
+            commands::track_removal::track_hide,
+            commands::track_removal::track_restore,
+            commands::track_removal::track_hidden,
+            commands::track_removal::track_delete_file,
         ])
         .run(tauri::generate_context!())
         .expect("music.xima failed to start");
@@ -162,10 +166,30 @@ fn setup<R: Runtime>(app: &mut App<R>) -> CoreResult<()> {
         SqliteStatisticsRepository::new(db.clone()),
     )));
     let player = Arc::new(PlayerService::new(tracks.clone(), queue.clone()));
+    let track_removal = Arc::new(TrackRemovalService::new(
+        tracks.clone(),
+        queue.clone(),
+        player.clone(),
+    ));
     let scan = Arc::new(
         ScanService::new(Arc::new(AndroidScannerAdapter::new(handle.clone())), tracks)
             .with_progress(scan_progress),
     );
+
+    match tauri::async_runtime::block_on(track_removal.recover_pending()) {
+        Ok(failures) => {
+            for (track_id, error) in failures {
+                log::warn!(
+                    "track removal recovery failed for track {track_id} [{}]: {error}",
+                    error.code()
+                );
+            }
+        }
+        Err(error) => log::warn!(
+            "track removal recovery could not load pending rows [{}]: {error}",
+            error.code()
+        ),
+    }
 
     subscribe(
         &handle,
@@ -177,8 +201,15 @@ fn setup<R: Runtime>(app: &mut App<R>) -> CoreResult<()> {
         },
     )?;
 
-    app.manage(AppState::new(
-        library, search, playlists, history, statistics, player, scan,
-    ));
+    app.manage(AppState {
+        library,
+        search,
+        playlists,
+        history,
+        statistics,
+        player,
+        scan,
+        track_removal,
+    });
     Ok(())
 }

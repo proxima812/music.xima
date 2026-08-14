@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crate::application::{
     HistoryService, LibraryService, PlayerService, PlaylistService, ScanService, SearchService,
-    StatisticsService,
+    StatisticsService, TrackRemovalService,
 };
 
 pub struct AppState {
@@ -20,28 +20,5 @@ pub struct AppState {
     pub statistics: Arc<StatisticsService>,
     pub player: Arc<PlayerService>,
     pub scan: Arc<ScanService>,
-}
-
-impl AppState {
-    /// Assembled once in `lib.rs`; the services are shared with the event
-    /// bridge, which is why they arrive as `Arc`s rather than by value.
-    pub fn new(
-        library: Arc<LibraryService>,
-        search: Arc<SearchService>,
-        playlists: Arc<PlaylistService>,
-        history: Arc<HistoryService>,
-        statistics: Arc<StatisticsService>,
-        player: Arc<PlayerService>,
-        scan: Arc<ScanService>,
-    ) -> Self {
-        Self {
-            library,
-            search,
-            playlists,
-            history,
-            statistics,
-            player,
-            scan,
-        }
-    }
+    pub track_removal: Arc<TrackRemovalService>,
 }

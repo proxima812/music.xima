@@ -208,6 +208,28 @@ impl PlayerService {
         Ok(())
     }
 
+    /// Removes every occurrence of a library track without rebuilding the
+    /// native queue. Descending indexes keep every later position valid and
+    /// let Media3 advance naturally when the current item is removed.
+    pub async fn remove_track(&self, track_id: i64) -> CoreResult<()> {
+        let mut queue = self.player.queue_ids().await?;
+        let indexes: Vec<usize> = queue
+            .iter()
+            .enumerate()
+            .filter_map(|(index, id)| (*id == track_id).then_some(index))
+            .rev()
+            .collect();
+
+        for index in indexes {
+            let native_index = i32::try_from(index)
+                .map_err(|_| CoreError::internal("native queue index exceeds i32"))?;
+            self.player.remove_queue_item(native_index).await?;
+            queue.remove(index);
+            *self.mirror() = queue.clone();
+        }
+        Ok(())
+    }
+
     pub async fn move_queue_item(&self, from: i32, to: i32) -> CoreResult<()> {
         validated_index("from", i64::from(from))?;
         validated_index("to", i64::from(to))?;
@@ -338,6 +360,7 @@ mod tests {
         queue_index: Mutex<Option<i32>>,
         /// Empty means "this port keeps no mirror", which is the fallback case.
         queue_ids: Mutex<Vec<i64>>,
+        fail_remove_at: Mutex<Option<i32>>,
     }
 
     impl FakePlayer {
@@ -442,6 +465,13 @@ mod tests {
 
         async fn remove_queue_item(&self, index: i32) -> CoreResult<()> {
             self.record(Call::Remove(index));
+            if *self.fail_remove_at.lock().expect("lock") == Some(index) {
+                return Err(CoreError::Player("remove failed".to_owned()));
+            }
+            let mut queue = self.queue_ids.lock().expect("lock");
+            if let Some(position) = super::slot(index, queue.len()) {
+                queue.remove(position);
+            }
             Ok(())
         }
 
@@ -666,6 +696,78 @@ mod tests {
 
         service.clear_queue().await.expect("cleared");
         assert!(service.queue_snapshot().is_empty());
+    }
+
+    #[tokio::test]
+    async fn remove_track_removes_all_duplicates_from_highest_index_first() {
+        let (service, _, player) = service();
+        service.sync_queue(vec![1, 2, 1, 3, 1]);
+        *player.queue_ids.lock().expect("lock") = vec![1, 2, 1, 3, 1];
+
+        service.remove_track(1).await.expect("track removed");
+
+        assert_eq!(
+            player.calls(),
+            vec![Call::Remove(4), Call::Remove(2), Call::Remove(0)]
+        );
+        assert_eq!(*player.queue_ids.lock().expect("lock"), vec![2, 3]);
+        assert_eq!(service.queue_snapshot(), vec![2, 3]);
+    }
+
+    #[tokio::test]
+    async fn remove_track_delegates_current_item_to_the_native_player() {
+        let (service, _, player) = service();
+        service.sync_queue(vec![1, 2, 3]);
+        *player.queue_ids.lock().expect("lock") = vec![1, 2, 3];
+        *player.queue_index.lock().expect("lock") = Some(1);
+
+        service.remove_track(2).await.expect("current removed");
+
+        assert_eq!(player.calls(), vec![Call::Remove(1)]);
+        assert_eq!(service.queue_snapshot(), vec![1, 3]);
+    }
+
+    #[tokio::test]
+    async fn remove_track_after_current_item_keeps_the_current_slot_stable() {
+        let (service, _, player) = service();
+        service.sync_queue(vec![1, 2, 3]);
+        *player.queue_ids.lock().expect("lock") = vec![1, 2, 3];
+        *player.queue_index.lock().expect("lock") = Some(0);
+
+        service.remove_track(3).await.expect("later item removed");
+
+        assert_eq!(player.calls(), vec![Call::Remove(2)]);
+        assert_eq!(*player.queue_index.lock().expect("lock"), Some(0));
+        assert_eq!(service.queue_snapshot(), vec![1, 2]);
+    }
+
+    #[tokio::test]
+    async fn remove_track_is_an_idempotent_no_op_when_absent() {
+        let (service, _, player) = service();
+        service.sync_queue(vec![1, 2, 3]);
+        *player.queue_ids.lock().expect("lock") = vec![1, 2, 3];
+
+        service.remove_track(9).await.expect("absent is fine");
+
+        assert!(player.calls().is_empty());
+        assert_eq!(service.queue_snapshot(), vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn remove_track_keeps_the_mirror_unchanged_when_native_removal_fails() {
+        let (service, _, player) = service();
+        service.sync_queue(vec![1, 2, 3]);
+        *player.queue_ids.lock().expect("lock") = vec![1, 2, 3];
+        *player.fail_remove_at.lock().expect("lock") = Some(1);
+
+        let error = service
+            .remove_track(2)
+            .await
+            .expect_err("native removal fails");
+
+        assert_eq!(error.code(), "PLAYER");
+        assert_eq!(service.queue_snapshot(), vec![1, 2, 3]);
+        assert_eq!(*player.queue_ids.lock().expect("lock"), vec![1, 2, 3]);
     }
 
     #[tokio::test]
