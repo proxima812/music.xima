@@ -94,10 +94,14 @@ class MusicLibrary(activity: Activity) {
         }
 
         try {
-            context.contentResolver.releasePersistableUriPermission(
-                Uri.parse(root),
-                Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
+            val uri = Uri.parse(root)
+            val permission = context.contentResolver.persistedUriPermissions
+                .firstOrNull { it.uri == uri }
+            val flags = (if (permission?.isReadPermission == true) Intent.FLAG_GRANT_READ_URI_PERMISSION else 0) or
+                (if (permission?.isWritePermission == true) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
+            if (flags != 0) {
+                context.contentResolver.releasePersistableUriPermission(uri, flags)
+            }
         } catch (error: Exception) {
             Log.w(TAG, "разрешение на $root не отозвано", error)
         }
@@ -111,12 +115,14 @@ class MusicLibrary(activity: Activity) {
         null
     }
 
-    /** Берём только чтение: писать в папку пользователя плеер не должен. */
-    fun takePersistableUriPermission(uri: Uri) {
+    /** Сохраняем только реально выданные системой read/write grants. */
+    fun takePersistableUriPermission(uri: Uri, returnedFlags: Int) {
+        val flags = persistableGrantFlags(returnedFlags)
+        if (flags == 0) return
         try {
             context.contentResolver.takePersistableUriPermission(
                 uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                flags,
             )
         } catch (error: Exception) {
             Log.w(TAG, "разрешение на $uri не сохранено", error)
@@ -126,6 +132,7 @@ class MusicLibrary(activity: Activity) {
     fun openDocumentTreeIntent(): Intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
         .addFlags(
             Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                 Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
         )
 
@@ -143,6 +150,9 @@ class MusicLibrary(activity: Activity) {
         private const val TAG = "MusicLibrary"
 
         private val EMPTY = ScanBatchResult(emptyList(), complete = true, nextCursor = null)
+
+        fun persistableGrantFlags(returnedFlags: Int): Int = returnedFlags and
+            (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
 
         fun toJson(result: ScanBatchResult): JSObject = result.toJsonObject()
     }

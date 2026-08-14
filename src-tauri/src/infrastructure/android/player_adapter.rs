@@ -10,12 +10,14 @@ use std::sync::{Mutex, MutexGuard};
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_player::{
     DeleteFileStatus, PlaybackState as NativePlaybackState, PlaybackStatus as NativePlaybackStatus,
-    Player, QueueItem, RepeatMode as NativeRepeatMode, SetQueueRequest,
+    Player, PlayerExt, QueueItem, RepeatMode as NativeRepeatMode, Result as PluginResult,
+    SetQueueRequest,
 };
 
 use crate::application::player_service::PlayerPort;
-use crate::domain::{PlaybackState, PlaybackStatus, RepeatMode, Track};
-use crate::error::CoreResult;
+use crate::application::TrackFilePort;
+use crate::domain::{FileDeleteOutcome, PlaybackState, PlaybackStatus, RepeatMode, Track};
+use crate::error::{CoreError, CoreResult};
 use crate::infrastructure::android::artwork_file_uri;
 
 pub struct AndroidPlayerAdapter<R: Runtime> {
@@ -55,32 +57,37 @@ impl<R: Runtime> AndroidPlayerAdapter<R> {
         self.mirror().clone()
     }
 
-    /// Native file-deletion surface for the removal service integration.
-    /// A cancelled Android confirmation is returned as data, not an error.
-    pub async fn delete_track_file(&self, uri: &str) -> CoreResult<DeleteFileStatus> {
-        #[cfg(target_os = "android")]
-        {
-            return Ok(self.plugin()?.delete_track_file(uri.to_owned())?.status);
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            let _ = uri;
-            Err(tauri_plugin_player::Error::UnsupportedDelete.into())
-        }
+    /// `run_mobile_plugin` waits for the native callback (including system
+    /// confirmation), so file operations never occupy an async worker.
+    async fn file_call<T, F>(&self, call: F) -> CoreResult<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Player<R>) -> PluginResult<T> + Send + 'static,
+    {
+        let app = self.app.clone();
+        tauri::async_runtime::spawn_blocking(move || call(app.player()))
+            .await
+            .map_err(|error| CoreError::Player(format!("track-file task failed: {error}")))?
+            .map_err(CoreError::from)
     }
 
-    /// Read-only native existence probe. Provider/permission ambiguity stays
-    /// an error so crash recovery never removes a database row by mistake.
+    /// A cancelled Android confirmation is returned as data, not an error.
+    pub async fn delete_track_file(&self, uri: &str) -> CoreResult<DeleteFileStatus> {
+        let uri = uri.to_owned();
+        Ok(self
+            .file_call(move |player| player.delete_track_file(uri))
+            .await?
+            .status)
+    }
+
+    /// Provider/permission ambiguity stays an error so crash recovery never
+    /// removes a database row by mistake.
     pub async fn track_file_exists(&self, uri: &str) -> CoreResult<bool> {
-        #[cfg(target_os = "android")]
-        {
-            return Ok(self.plugin()?.track_file_exists(uri.to_owned())?.exists);
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            let _ = uri;
-            Err(tauri_plugin_player::Error::UnsupportedDelete.into())
-        }
+        let uri = uri.to_owned();
+        Ok(self
+            .file_call(move |player| player.track_file_exists(uri))
+            .await?
+            .exists)
     }
 
     fn mirror(&self) -> MutexGuard<'_, Vec<i64>> {
@@ -120,6 +127,17 @@ impl<R: Runtime> AndroidPlayerAdapter<R> {
             .and_then(|index| usize::try_from(index).ok())
             .map(|index| index.saturating_add(1).min(len))
             .unwrap_or(len)
+    }
+}
+
+#[async_trait::async_trait]
+impl<R: Runtime> TrackFilePort for AndroidPlayerAdapter<R> {
+    async fn delete(&self, uri: &str) -> CoreResult<FileDeleteOutcome> {
+        self.delete_track_file(uri).await.map(file_delete_outcome)
+    }
+
+    async fn exists(&self, uri: &str) -> CoreResult<bool> {
+        self.track_file_exists(uri).await
     }
 }
 
@@ -265,6 +283,13 @@ fn ids_of(tracks: &[Track]) -> Vec<i64> {
     tracks.iter().map(|track| track.id).collect()
 }
 
+fn file_delete_outcome(status: DeleteFileStatus) -> FileDeleteOutcome {
+    match status {
+        DeleteFileStatus::Deleted => FileDeleteOutcome::Deleted,
+        DeleteFileStatus::Cancelled => FileDeleteOutcome::Cancelled,
+    }
+}
+
 /// Native state is copied field by field so a change on either side of the
 /// boundary shows up as a compile error rather than as silent drift.
 pub fn playback_state(state: NativePlaybackState) -> PlaybackState {
@@ -316,9 +341,12 @@ fn slot(index: i32, len: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ids_of, native_repeat_mode, playback_state, playback_status, repeat_mode, slot};
+    use super::{
+        file_delete_outcome, ids_of, native_repeat_mode, playback_state, playback_status,
+        repeat_mode, slot,
+    };
     use crate::application::testing::track;
-    use crate::domain::{PlaybackStatus, RepeatMode};
+    use crate::domain::{FileDeleteOutcome, PlaybackStatus, RepeatMode};
     use tauri_plugin_player::{
         PlaybackState as NativePlaybackState, PlaybackStatus as NativePlaybackStatus,
         RepeatMode as NativeRepeatMode,
@@ -385,5 +413,17 @@ mod tests {
             assert_eq!(repeat_mode(native), domain);
             assert_eq!(native_repeat_mode(domain), native);
         }
+    }
+
+    #[test]
+    fn native_delete_status_maps_to_domain_outcome() {
+        assert_eq!(
+            file_delete_outcome(tauri_plugin_player::DeleteFileStatus::Deleted),
+            FileDeleteOutcome::Deleted
+        );
+        assert_eq!(
+            file_delete_outcome(tauri_plugin_player::DeleteFileStatus::Cancelled),
+            FileDeleteOutcome::Cancelled
+        );
     }
 }

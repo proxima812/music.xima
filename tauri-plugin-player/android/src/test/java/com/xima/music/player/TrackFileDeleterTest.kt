@@ -1,6 +1,7 @@
 package com.xima.music.player
 
 import android.app.Activity
+import android.os.Build
 import android.provider.DocumentsContract
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -17,6 +18,27 @@ class TrackFileDeleterTest {
                 documentFlags = null,
             ),
         )
+    }
+
+    @Test
+    fun mediaStoreCollectionAndNonAudioUrisAreUnsupported() {
+        for (uri in listOf(
+            "content://media/external/audio/media",
+            "content://media/external/images/media/42",
+            "content://media/external/audio/media/0",
+            "content://media/external/audio/media/not-a-number",
+            "content://media/external/audio/media/42/extra",
+        )) {
+            assertEquals(
+                "unsafe MediaStore URI must be rejected: $uri",
+                DeleteTarget.UNSUPPORTED,
+                TrackFileDeleter.classifyTarget(
+                    uri = uri,
+                    isDocumentUri = false,
+                    documentFlags = null,
+                ),
+            )
+        }
     }
 
     @Test
@@ -85,5 +107,13 @@ class TrackFileDeleterTest {
             ExistenceProbe.PROVIDER_FAILURE,
             TrackFileDeleter.classifyExistence(cursorReturned = false, hasRow = false),
         )
+    }
+
+    @Test
+    fun legacyWritePermissionIsRequestedOnlyThroughAndroid28() {
+        assertEquals(true, needsLegacyStorageWritePermission(Build.VERSION_CODES.O))
+        assertEquals(true, needsLegacyStorageWritePermission(Build.VERSION_CODES.P))
+        assertEquals(false, needsLegacyStorageWritePermission(Build.VERSION_CODES.Q))
+        assertEquals(false, needsLegacyStorageWritePermission(Build.VERSION_CODES.R))
     }
 }

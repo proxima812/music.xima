@@ -1,11 +1,17 @@
 package com.xima.music.player
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.Build
 import android.webkit.WebView
 import androidx.activity.result.ActivityResult
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import app.tauri.annotation.ActivityCallback
 import app.tauri.annotation.Command
+import app.tauri.annotation.Permission
+import app.tauri.annotation.PermissionCallback
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
@@ -26,7 +32,16 @@ import java.util.concurrent.atomic.AtomicLong
  * Воспроизведение уходит в [PlaybackController], работа с файлами — в [MusicLibrary]
  * на `Dispatchers.IO`. Наверх всё возвращается событиями `trigger()`, а не поллингом.
  */
-@TauriPlugin
+internal fun needsLegacyStorageWritePermission(sdkInt: Int): Boolean = sdkInt <= Build.VERSION_CODES.P
+
+@TauriPlugin(
+    permissions = [
+        Permission(
+            strings = [Manifest.permission.WRITE_EXTERNAL_STORAGE],
+            alias = "legacyStorageWrite",
+        ),
+    ],
+)
 class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -223,14 +238,15 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
 
     @ActivityCallback
     fun onFolderPicked(invoke: Invoke, result: ActivityResult) {
-        val uri = result.data?.data
+        val data = result.data
+        val uri = data?.data
         if (result.resultCode != Activity.RESULT_OK || uri == null) {
             invoke.resolve()
             return
         }
         scope.launch {
             try {
-                library.takePersistableUriPermission(uri)
+                library.takePersistableUriPermission(uri, data.flags)
                 invoke.resolveObject(uri.toString())
             } catch (error: Exception) {
                 invoke.reject(error.message ?: "cannot persist access to the picked folder")
@@ -279,6 +295,28 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun deleteTrackFile(invoke: Invoke) {
+        if (needsLegacyStorageWritePermission(Build.VERSION.SDK_INT) &&
+            ContextCompat.checkSelfPermission(
+                activity,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissionForAlias(
+                "legacyStorageWrite",
+                invoke,
+                "onLegacyStorageWriteGranted",
+            )
+            return
+        }
+        deleteTrackFileGranted(invoke)
+    }
+
+    @PermissionCallback
+    fun onLegacyStorageWriteGranted(invoke: Invoke) {
+        deleteTrackFileGranted(invoke)
+    }
+
+    private fun deleteTrackFileGranted(invoke: Invoke) {
         val args = argsOf(invoke) ?: return
         val uri = args.stringOrNull("uri") ?: return invoke.reject("deleteTrackFile: uri is required")
         scope.launch {

@@ -1,6 +1,7 @@
 package com.xima.music.player
 
 import android.app.Activity
+import android.app.RecoverableSecurityException
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
@@ -8,6 +9,7 @@ import android.os.Build
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import androidx.activity.result.IntentSenderRequest
+import androidx.annotation.RequiresApi
 import java.io.FileNotFoundException
 import java.net.URI
 
@@ -66,7 +68,7 @@ internal class TrackFileDeleter(context: Context) {
         val uri = parseContentUri(uriText)
         val isDocument = DocumentsContract.isDocumentUri(appContext, uri)
         val projection = when {
-            isMediaStoreUri(uri) -> arrayOf(MediaStore.MediaColumns._ID)
+            isMediaStoreAudioItem(uriText) -> arrayOf(MediaStore.MediaColumns._ID)
             isDocument -> arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
             else -> throw unsupported(uriText)
         }
@@ -109,6 +111,11 @@ internal class TrackFileDeleter(context: Context) {
 
         val deletedRows = try {
             resolver.delete(uri, null, null)
+        } catch (error: SecurityException) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                return recoverableDeleteAction(error)
+            }
+            throw TrackFileException(ERROR_DELETE_FAILED, "MediaStore denied track-file deletion", error)
         } catch (error: RuntimeException) {
             throw TrackFileException(ERROR_DELETE_FAILED, "MediaStore could not delete the track file", error)
         }
@@ -116,6 +123,16 @@ internal class TrackFileDeleter(context: Context) {
             throw TrackFileException(ERROR_DELETE_FAILED, "MediaStore did not delete the track file")
         }
         return DeleteAction.Deleted
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun recoverableDeleteAction(error: SecurityException): DeleteAction {
+        if (error !is RecoverableSecurityException) {
+            throw TrackFileException(ERROR_DELETE_FAILED, "MediaStore denied track-file deletion", error)
+        }
+        return DeleteAction.Confirm(
+            IntentSenderRequest.Builder(error.userAction.actionIntent.intentSender).build(),
+        )
     }
 
     private fun deleteSafDocument(uri: Uri): DeleteAction {
@@ -166,7 +183,11 @@ internal class TrackFileDeleter(context: Context) {
                 return DeleteTarget.UNSUPPORTED
             }
             if (parsed.authority.equals(MediaStore.AUTHORITY, ignoreCase = true)) {
-                return DeleteTarget.MEDIA_STORE
+                return if (isMediaStoreAudioItem(uri)) {
+                    DeleteTarget.MEDIA_STORE
+                } else {
+                    DeleteTarget.UNSUPPORTED
+                }
             }
             if (!isDocumentUri) return DeleteTarget.UNSUPPORTED
 
@@ -185,9 +206,19 @@ internal class TrackFileDeleter(context: Context) {
             else -> ExistenceProbe.MISSING
         }
 
-        private fun isMediaStoreUri(uri: Uri): Boolean =
-            uri.scheme.equals(ContentResolver.SCHEME_CONTENT, ignoreCase = true) &&
-                uri.authority.equals(MediaStore.AUTHORITY, ignoreCase = true)
+        private fun isMediaStoreAudioItem(uri: String): Boolean {
+            val parsed = runCatching { URI(uri) }.getOrNull() ?: return false
+            if (!parsed.scheme.equals(ContentResolver.SCHEME_CONTENT, ignoreCase = true) ||
+                !parsed.authority.equals(MediaStore.AUTHORITY, ignoreCase = true)
+            ) {
+                return false
+            }
+            val segments = parsed.path.orEmpty().split('/').filter(String::isNotEmpty)
+            if (segments.size != 4 || segments[1] != "audio" || segments[2] != "media") {
+                return false
+            }
+            return segments[3].toLongOrNull()?.let { it > 0L } == true
+        }
 
         private fun parseContentUri(uriText: String): Uri {
             val uri = Uri.parse(uriText)

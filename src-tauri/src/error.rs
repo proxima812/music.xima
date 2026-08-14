@@ -14,6 +14,8 @@ pub enum CoreError {
     Migration(#[from] sqlx::migrate::MigrateError),
     #[error("player error: {0}")]
     Player(String),
+    #[error("unsupported delete: {0}")]
+    UnsupportedDelete(String),
     #[error("scan error: {0}")]
     Scan(String),
     #[error("io error: {0}")]
@@ -34,7 +36,7 @@ pub struct IpcError {
 }
 
 impl CoreError {
-    /// One of `NOT_FOUND | INVALID_INPUT | DATABASE | PLAYER | SCAN | IO | INTERNAL`.
+    /// One of `NOT_FOUND | INVALID_INPUT | DATABASE | PLAYER | UNSUPPORTED_DELETE | SCAN | IO | INTERNAL`.
     /// Migration failures are database failures as far as the frontend cares.
     pub fn code(&self) -> &'static str {
         match self {
@@ -42,6 +44,7 @@ impl CoreError {
             Self::InvalidInput(_) => "INVALID_INPUT",
             Self::Database(_) | Self::Migration(_) => "DATABASE",
             Self::Player(_) => "PLAYER",
+            Self::UnsupportedDelete(_) => "UNSUPPORTED_DELETE",
             Self::Scan(_) => "SCAN",
             Self::Io(_) => "IO",
             Self::Internal(_) => "INTERNAL",
@@ -84,7 +87,12 @@ impl Serialize for CoreError {
 
 impl From<tauri_plugin_player::Error> for CoreError {
     fn from(error: tauri_plugin_player::Error) -> Self {
-        Self::Player(error.to_string())
+        match error {
+            tauri_plugin_player::Error::UnsupportedDelete => {
+                Self::UnsupportedDelete(error.to_string())
+            }
+            other => Self::Player(other.to_string()),
+        }
     }
 }
 
@@ -122,6 +130,10 @@ mod tests {
             "DATABASE"
         );
         assert_eq!(CoreError::Player("boom".to_owned()).code(), "PLAYER");
+        assert_eq!(
+            CoreError::UnsupportedDelete("provider".to_owned()).code(),
+            "UNSUPPORTED_DELETE"
+        );
         assert_eq!(CoreError::Scan("boom".to_owned()).code(), "SCAN");
         assert_eq!(CoreError::Io(std::io::Error::other("boom")).code(), "IO");
         assert_eq!(CoreError::internal("boom").code(), "INTERNAL");
@@ -163,5 +175,12 @@ mod tests {
         let parse_error = serde_json::from_str::<Vec<i64>>("{oops").expect_err("invalid json");
         let error = CoreError::from(parse_error);
         assert_eq!(error.code(), "INTERNAL");
+    }
+
+    #[test]
+    fn plugin_unsupported_delete_keeps_its_stable_code() {
+        let error = CoreError::from(tauri_plugin_player::Error::UnsupportedDelete);
+        assert_eq!(error.code(), "UNSUPPORTED_DELETE");
+        assert!(matches!(error, CoreError::UnsupportedDelete(_)));
     }
 }
