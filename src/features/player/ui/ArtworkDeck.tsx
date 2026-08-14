@@ -62,7 +62,7 @@ function DeckCard(props: DeckCardProps) {
 export function ArtworkDeck(props: ArtworkDeckProps) {
   return (
     <div class="relative w-full [container-type:inline-size]">
-      <div class="relative mx-auto w-[min(100cqw,74.358974dvh,43.589744rem)] overflow-hidden [container-type:inline-size]">
+      <div class="relative mx-auto w-[min(100cqw,74.358974dvh,43.589744rem)] overflow-hidden [container-type:inline-size] landscape:w-[min(100cqw,20dvh,43.589744rem)]">
         <div class="relative mx-auto aspect-square w-[78cqw]">
           {props.previous !== null && (
             <DeckCard

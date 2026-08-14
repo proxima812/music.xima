@@ -31,6 +31,7 @@ export function FullPlayer() {
 
   let settleTimer: ReturnType<typeof setTimeout> | null = null
   let trackChangeTimer: ReturnType<typeof setTimeout> | null = null
+  let returnFocus: HTMLElement | null = null
 
   const viewportWidth = (): number => window.innerWidth
   const neighbors = createMemo(() => deckNeighbors(player.queue, player.state.queueIndex))
@@ -158,6 +159,15 @@ export function FullPlayer() {
           <Dialog.Content
             class="modal__dialog modal__dialog--full safe-top safe-bottom animate-in slide-in-from-bottom relative isolate touch-none gap-4 overflow-hidden bg-background px-5 pt-2 pb-4 duration-300 ease-out-fluid md:mx-auto md:max-w-2xl"
             style={{ transform: `translateY(${String(dragY())}px)` }}
+            onOpenAutoFocus={() => {
+              returnFocus =
+                document.activeElement instanceof HTMLElement ? document.activeElement : null
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault()
+              returnFocus?.focus({ preventScroll: true })
+              returnFocus = null
+            }}
             onTouchStart={(event) => {
               if (!settling()) swipe.onTouchStart(event)
             }}
