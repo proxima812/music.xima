@@ -56,6 +56,10 @@ const SettingsScreen = lazy(async () => ({
   default: (await import('@/features/settings/ui/SettingsScreen')).SettingsScreen,
 }))
 
+const HiddenTracksScreen = lazy(async () => ({
+  default: (await import('@/features/settings/ui/HiddenTracksScreen')).HiddenTracksScreen,
+}))
+
 export const routes: RouteDefinition[] = [
   { path: '/', component: HomeScreen },
   { path: '/library', component: LibraryScreen },
@@ -70,5 +74,6 @@ export const routes: RouteDefinition[] = [
   { path: '/smart/new', component: SmartPlaylistEditorScreen },
   { path: '/smart/:id/edit', component: SmartPlaylistEditorScreen },
   { path: '/settings', component: SettingsScreen },
+  { path: '/settings/hidden-tracks', component: HiddenTracksScreen },
   { path: '*', component: () => <Navigate href="/" /> },
 ]

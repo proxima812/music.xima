@@ -1,5 +1,5 @@
 import { useNavigate } from '@solidjs/router'
-import { ChevronLeft } from 'lucide-solid'
+import { ChevronLeft, ChevronRight } from 'lucide-solid'
 
 import { useSettings } from '@/app/providers'
 import { playerSetShuffle, playerSetVolume } from '@/shared/ipc'
@@ -48,6 +48,21 @@ export function SettingsScreen() {
 
       <div class="flex flex-col gap-2 pb-8">
         <LibrarySection />
+
+        <section aria-label="Библиотека" class="px-4">
+          <div class="depth-raised overflow-hidden rounded-2xl">
+            <button
+              type="button"
+              class="flex min-h-14 w-full items-center gap-3 px-4 text-start no-highlight"
+              onClick={() => {
+                navigate('/settings/hidden-tracks')
+              }}
+            >
+              <span class="min-w-0 flex-1 truncate text-sm text-foreground">Скрытые песни</span>
+              <ChevronRight class="size-5 shrink-0 text-muted" aria-hidden="true" />
+            </button>
+          </div>
+        </section>
 
         <section>
           <SectionHeader title="Воспроизведение" />
