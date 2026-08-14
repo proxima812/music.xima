@@ -50,6 +50,14 @@ export type Track = {
   lastPlayedAt: number | null
 }
 
+/** Скрытая пользователем песня и момент, когда она была скрыта. */
+export type HiddenTrack = {
+  track: Track
+  hiddenAt: number
+}
+
+export type DeleteTrackResult = 'deleted' | 'cancelled'
+
 // §1.2 — альбом, артист, жанр, папка
 
 export type Album = {

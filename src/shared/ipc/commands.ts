@@ -2,8 +2,10 @@ import { call } from './call'
 import type {
   Album,
   Artist,
+  DeleteTrackResult,
   Folder,
   Genre,
+  HiddenTrack,
   LibraryStats,
   Page,
   PlaybackState,
@@ -77,6 +79,15 @@ export const libraryRoots = (): Promise<string[]> => call('library_roots')
 
 export const libraryRemoveRoot = (uri: string): Promise<void> =>
   call('library_remove_root', { uri })
+
+export const trackHide = (id: number): Promise<void> => call('track_hide', { id })
+
+export const trackRestore = (id: number): Promise<void> => call('track_restore', { id })
+
+export const trackHidden = (): Promise<HiddenTrack[]> => call('track_hidden')
+
+export const trackDeleteFile = (id: number): Promise<DeleteTrackResult> =>
+  call('track_delete_file', { id })
 
 export const artworkUri = (coverKey: string): Promise<string | null> =>
   call('artwork_uri', { coverKey })
