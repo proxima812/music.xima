@@ -22,7 +22,9 @@ pub use playlist_service::PlaylistService;
 pub use scan_service::{ProgressCallback, ScanBatch, ScanService, ScannerPort, MEDIA_STORE_ROOT};
 pub use search_service::SearchService;
 pub use statistics_service::StatisticsService;
-pub use track_removal_service::{RecoveryFailure, TrackFilePort, TrackRemovalService};
+pub use track_removal_service::{
+    RecoveryFailure, RecoveryReport, TrackFilePort, TrackRemovalService,
+};
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

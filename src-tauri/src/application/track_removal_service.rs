@@ -15,6 +15,11 @@ pub trait TrackFilePort: Send + Sync {
 
 pub type RecoveryFailure = (i64, CoreError);
 
+pub struct RecoveryReport {
+    pub finalized_count: usize,
+    pub failures: Vec<RecoveryFailure>,
+}
+
 pub struct TrackRemovalService {
     tracks: Arc<dyn TrackRepository>,
     files: Arc<dyn TrackFilePort>,
@@ -93,21 +98,28 @@ impl TrackRemovalService {
         }
     }
 
-    pub async fn recover_pending(&self) -> CoreResult<Vec<RecoveryFailure>> {
+    pub async fn recover_pending(&self) -> CoreResult<RecoveryReport> {
         let pending = self.tracks.pending_deletions().await?;
         let mut failures = Vec::new();
+        let mut finalized_count = 0;
         for row in pending {
-            if let Err(error) = self.recover_one(&row).await {
-                failures.push((row.track_id, error));
+            match self.recover_one(&row).await {
+                Ok(true) => finalized_count += 1,
+                Ok(false) => {}
+                Err(error) => failures.push((row.track_id, error)),
             }
         }
-        Ok(failures)
+        Ok(RecoveryReport {
+            finalized_count,
+            failures,
+        })
     }
 
-    async fn recover_one(&self, pending: &PendingDeletion) -> CoreResult<()> {
+    async fn recover_one(&self, pending: &PendingDeletion) -> CoreResult<bool> {
         if !pending.file_deleted {
             if self.files.exists(&pending.uri).await? {
-                return self.tracks.cancel_deletion(pending.track_id).await;
+                self.tracks.cancel_deletion(pending.track_id).await?;
+                return Ok(false);
             }
             // Covers the crash gap between a successful native deletion and
             // persisting the recovery marker.
@@ -115,7 +127,8 @@ impl TrackRemovalService {
         }
 
         self.player.remove_track(pending.track_id).await?;
-        self.tracks.finalize_deletion(pending.track_id).await
+        self.tracks.finalize_deletion(pending.track_id).await?;
+        Ok(true)
     }
 }
 
@@ -638,15 +651,16 @@ mod tests {
             (uri(4), ExistsBehavior::Error),
         ]);
 
-        let failures = harness
+        let report = harness
             .service
             .recover_pending()
             .await
             .expect("recovery runs");
 
-        assert_eq!(failures.len(), 1);
-        assert_eq!(failures[0].0, 4);
-        assert_eq!(failures[0].1.code(), "PLAYER");
+        assert_eq!(report.finalized_count, 2);
+        assert_eq!(report.failures.len(), 1);
+        assert_eq!(report.failures[0].0, 4);
+        assert_eq!(report.failures[0].1.code(), "PLAYER");
         assert_eq!(
             harness.tracks.pending(),
             vec![PendingDeletion {
@@ -657,5 +671,19 @@ mod tests {
             }]
         );
         assert_eq!(*harness.player.queue.lock().expect("lock"), vec![3, 4]);
+    }
+
+    #[tokio::test]
+    async fn recovery_reports_no_library_change_when_nothing_is_pending() {
+        let harness = harness(Vec::new(), DeleteBehavior::Deleted);
+
+        let report = harness
+            .service
+            .recover_pending()
+            .await
+            .expect("recovery runs");
+
+        assert_eq!(report.finalized_count, 0);
+        assert!(report.failures.is_empty());
     }
 }

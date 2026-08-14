@@ -16,13 +16,13 @@ use std::{sync::Arc, time::Duration};
 use tauri::{App, Manager, Runtime};
 
 use crate::application::{
-    HistoryService, LibraryService, PlayerService, PlaylistService, ProgressCallback, ScanService,
-    SearchService, StatisticsService, TrackRemovalService,
+    HistoryService, LibraryService, PlayerService, PlaylistService, ProgressCallback,
+    RecoveryReport, ScanService, SearchService, StatisticsService, TrackRemovalService,
 };
 use crate::error::CoreResult;
 use crate::infrastructure::android::{
-    emit_scan_progress, subscribe, AndroidArtworkAdapter, AndroidPlayerAdapter,
-    AndroidScannerAdapter, EventSinks,
+    emit_library_changed, emit_scan_progress, subscribe, AndroidArtworkAdapter,
+    AndroidPlayerAdapter, AndroidScannerAdapter, EventSinks,
 };
 use crate::infrastructure::sqlite::{
     self, SqliteAlbumRepository, SqliteArtistRepository, SqliteFavoriteRepository,
@@ -188,15 +188,22 @@ fn setup<R: Runtime>(app: &mut App<R>) -> CoreResult<()> {
 
     let recovery_player = player.clone();
     let recovery_service = track_removal.clone();
+    let recovery_handle = handle.clone();
     tauri::async_runtime::spawn(async move {
         match tokio::time::timeout(Duration::from_secs(5), recovery_player.refresh_queue()).await {
             Ok(Ok(_)) => match recovery_service.recover_pending().await {
-                Ok(failures) => {
+                Ok(RecoveryReport {
+                    finalized_count,
+                    failures,
+                }) => {
                     for (track_id, error) in failures {
                         log::warn!(
                             "track removal recovery failed for track {track_id} [{}]: {error}",
                             error.code()
                         );
+                    }
+                    if finalized_count > 0 {
+                        emit_library_changed(&recovery_handle, "deletion-recovery");
                     }
                 }
                 Err(error) => log::warn!(
