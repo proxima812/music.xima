@@ -21,9 +21,9 @@ type DeckCardProps = {
 }
 
 const RESTING_OFFSET: Record<DeckPosition, string> = {
-  previous: '-90%',
+  previous: '-101%',
   current: '0px',
-  next: '90%',
+  next: '101%',
 }
 
 function DeckCard(props: DeckCardProps) {
