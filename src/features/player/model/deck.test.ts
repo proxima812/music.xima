@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   DECK_COMMIT_FRACTION,
+  DECK_EDGE_DRAG_FRACTION,
   DECK_MAX_DRAG_FRACTION,
   clampDeckDrag,
   deckNeighbors,
@@ -64,4 +65,46 @@ test('shouldCommitDeckSwipe returns false for invalid dimensions', () => {
   assert.equal(shouldCommitDeckSwipe(300, 1, 0), false)
   assert.equal(shouldCommitDeckSwipe(300, 1, Number.NaN), false)
   assert.equal(shouldCommitDeckSwipe(Number.NaN, 1, 1_000), false)
+})
+
+test('deckNeighbors wraps around the ends when the whole queue repeats', () => {
+  const items = ['first', 'second', 'third']
+
+  assert.deepEqual(deckNeighbors(items, 0, true), {
+    previous: 'third',
+    current: 'first',
+    next: 'second',
+  })
+  assert.deepEqual(deckNeighbors(items, 2, true), {
+    previous: 'second',
+    current: 'third',
+    next: 'first',
+  })
+})
+
+test('deckNeighbors never makes a single track its own neighbor', () => {
+  assert.deepEqual(deckNeighbors(['only'], 0, true), {
+    previous: null,
+    current: 'only',
+    next: null,
+  })
+})
+
+test('clampDeckDrag stops short at the edge of the queue', () => {
+  const width = 1_000
+  const edgeDrag = width * DECK_EDGE_DRAG_FRACTION
+
+  assert.equal(clampDeckDrag(edgeDrag, width, false), edgeDrag)
+  // Дальше края палец тянет почти впустую: 100 px превращаются в 12.
+  assert.equal(clampDeckDrag(edgeDrag + 100, width, false), edgeDrag + 12)
+  assert.equal(clampDeckDrag(-edgeDrag - 100, width, false), -edgeDrag - 12)
+  // Тот же жест при наличии соседа уезжает во много раз дальше.
+  assert.ok(Math.abs(clampDeckDrag(400, width, true)) > Math.abs(clampDeckDrag(400, width, false)))
+})
+
+test('shouldCommitDeckSwipe never commits without an adjacent track', () => {
+  const width = 1_000
+
+  assert.equal(shouldCommitDeckSwipe(width, 0, width, false), false)
+  assert.equal(shouldCommitDeckSwipe(20, 1, width, false), false)
 })

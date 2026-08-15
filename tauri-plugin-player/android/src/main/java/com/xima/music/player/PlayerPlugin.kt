@@ -43,6 +43,17 @@ internal fun needsLegacyMediaStoreWritePermission(sdkInt: Int, uri: String): Boo
             strings = [Manifest.permission.WRITE_EXTERNAL_STORAGE],
             alias = "legacyStorageWrite",
         ),
+        // Чтение общей медиатеки. Объявить разрешение в манифесте мало: на 33+
+        // без запроса в рантайме MediaStore молча отдаёт пустой курсор, и скан
+        // заканчивается нулём треков (docs/BUGS.md, B6).
+        Permission(
+            strings = [Manifest.permission.READ_MEDIA_AUDIO],
+            alias = "audioRead",
+        ),
+        Permission(
+            strings = [Manifest.permission.READ_EXTERNAL_STORAGE],
+            alias = "legacyAudioRead",
+        ),
     ],
 )
 class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
@@ -221,8 +232,48 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
 
     // ── Библиотека ──────────────────────────────────────────────────────────
 
+    /** На 33+ доступ к аудио даёт `READ_MEDIA_AUDIO`, ниже — `READ_EXTERNAL_STORAGE`. */
+    private val audioReadPermission: String
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+
+    private val audioReadAlias: String
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            "audioRead"
+        } else {
+            "legacyAudioRead"
+        }
+
+    private fun hasAudioReadPermission(): Boolean =
+        ContextCompat.checkSelfPermission(activity, audioReadPermission) ==
+            PackageManager.PERMISSION_GRANTED
+
     @Command
     fun scanMediaStore(invoke: Invoke) {
+        if (!hasAudioReadPermission()) {
+            requestPermissionForAlias(audioReadAlias, invoke, "onAudioReadGranted")
+            return
+        }
+        scanMediaStoreGranted(invoke)
+    }
+
+    /**
+     * Диалог закрыт. Отказ важно отличить от пустой библиотеки: молчаливый
+     * «0 треков» пользователю не объяснить, поэтому наверх уходит ошибка.
+     */
+    @PermissionCallback
+    fun onAudioReadGranted(invoke: Invoke) {
+        if (!hasAudioReadPermission()) {
+            invoke.reject("scanMediaStore: permission to read audio was denied")
+            return
+        }
+        scanMediaStoreGranted(invoke)
+    }
+
+    private fun scanMediaStoreGranted(invoke: Invoke) {
         val args = argsOf(invoke) ?: return
         val since = args.longOrNull("since")
         runScan(invoke) { library.scanMediaStore(since) }

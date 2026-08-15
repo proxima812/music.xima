@@ -25,14 +25,14 @@ export function BottomNav() {
       aria-label="Основная навигация"
       class="depth-bar safe-bottom w-full border-t border-border"
     >
-      <ul class="flex h-nav w-full items-stretch">
+      <ul class="mx-auto flex h-nav w-full max-w-3xl items-stretch">
         <For each={NAV_ITEMS}>
           {(item) => (
             <li class="flex min-w-0 flex-1">
               <A
                 href={item.href}
                 end={item.exact}
-                class="flex min-h-11 w-full flex-col items-center justify-center gap-1 px-1 no-highlight transition-colors duration-150"
+                class="flex min-h-11 w-full flex-col items-center justify-center gap-1 px-1 no-highlight transition-[color,transform] duration-150 active:scale-95"
                 activeClass="text-accent"
                 inactiveClass="text-muted"
               >

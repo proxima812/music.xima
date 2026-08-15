@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "music.xima",
+  "productName": "xima.music",
   "version": "0.1.0",
   "identifier": "com.xima.music",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "music.xima",
+        "title": "xima.music",
         "width": 420,
         "height": 900,
         "resizable": true
@@ -23,7 +23,7 @@
       "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; media-src 'self' asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline'; script-src 'self'",
       "assetProtocol": {
         "enable": true,
-        "scope": []
+        "scope": ["$APPCACHE/artwork/**"]
       }
     },
     "withGlobalTauri": false

@@ -34,7 +34,7 @@ export function MiniPlayer() {
     <Show when={player.current}>
       {(track) => (
         <div
-          class="depth-floating relative h-mini-player w-full shrink-0 overflow-hidden border-t border-border"
+          class="depth-floating animate-in slide-in-from-bottom-4 fade-in-0 relative h-mini-player w-full shrink-0 touch-none overflow-hidden border-t border-border duration-200 ease-out-fluid"
           onTouchStart={swipe.onTouchStart}
           onTouchMove={swipe.onTouchMove}
           onTouchEnd={swipe.onTouchEnd}
@@ -47,7 +47,7 @@ export function MiniPlayer() {
             />
           </div>
 
-          <div class="flex h-full items-center gap-2 pr-1 pl-2">
+          <div class="mx-auto flex h-full w-full max-w-3xl items-center gap-2 pr-1 pl-2">
             <button
               type="button"
               class="flex h-full min-w-0 flex-1 items-center gap-3 text-start no-highlight"

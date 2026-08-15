@@ -44,6 +44,7 @@ export function TrackRow(props: TrackRowProps) {
     <div
       class={cn(
         'flex h-16 w-full items-center gap-1 pr-1 pl-4',
+        'transition-colors duration-150 active:bg-surface-secondary',
         isActive() && 'bg-surface-secondary',
         props.class,
       )}

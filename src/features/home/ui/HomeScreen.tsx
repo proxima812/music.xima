@@ -78,7 +78,7 @@ export function HomeScreen() {
   return (
     <Screen scrollable={false}>
       <TopBar
-        title="music.xima"
+        title="xima.music"
         right={
           <>
             <IconButton

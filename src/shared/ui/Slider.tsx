@@ -16,6 +16,19 @@ export type SliderProps = {
   valueLabel?: JSX.Element
   disabled?: boolean
   ariaLabel?: string
+  /**
+   * `media` — тонкая полоса перемотки: дорожка 6 px, круглая ручка.
+   * Пресет HeroUI рассчитан на «толстый» слайдер настроек: дорожка 20 px,
+   * прямоугольная заливка внутри скруглённой дорожки и ручка-пилюля того же
+   * цвета — под треком это читается как переключатель, а не как прогресс.
+   */
+  variant?: 'default' | 'media'
+  /**
+   * Плавно догонять значение вместо скачков. Позиция трека приезжает тиком раз
+   * в ~500 мс, и без этого полоса дёргается ступеньками. Во время перетаскивания
+   * выключается — иначе ручка отстаёт от пальца.
+   */
+  smooth?: boolean
   class?: string
 }
 
@@ -52,12 +65,45 @@ export function Slider(props: SliderProps) {
         {(valueLabel) => <div class="slider__output">{valueLabel()}</div>}
       </Show>
 
-      <KobalteSlider.Track class="slider__track">
-        <KobalteSlider.Fill class="slider__fill" />
-        <KobalteSlider.Thumb class="slider__thumb top-0" aria-label={props.ariaLabel}>
-          <KobalteSlider.Input />
-        </KobalteSlider.Thumb>
-      </KobalteSlider.Track>
+      <Show
+        when={props.variant === 'media'}
+        fallback={
+          <KobalteSlider.Track class="slider__track">
+            <KobalteSlider.Fill class="slider__fill" />
+            <KobalteSlider.Thumb class="slider__thumb top-0" aria-label={props.ariaLabel}>
+              <KobalteSlider.Input />
+            </KobalteSlider.Thumb>
+          </KobalteSlider.Track>
+        }
+      >
+        <KobalteSlider.Track
+          class={cn(
+            'relative h-1.5 w-full touch-none rounded-full bg-default',
+            // Зона попадания пальцем. Дорожка — 6 px, попасть в неё на ходу
+            // невозможно, поэтому растягиваем область указателя псевдоэлементом:
+            // он не влияет на вёрстку и не меняет `getBoundingClientRect()`
+            // дорожки, по которому Kobalte считает позицию.
+            "before:absolute before:inset-x-0 before:-inset-y-5 before:block before:content-['']",
+          )}
+        >
+          <KobalteSlider.Fill
+            class={cn(
+              'absolute h-full rounded-full bg-accent',
+              props.smooth === true && 'transition-[width] duration-500 ease-linear',
+            )}
+          />
+          <KobalteSlider.Thumb
+            class={cn(
+              'top-1/2 size-3.5 -translate-y-1/2 rounded-full bg-foreground shadow-[0_1px_4px_rgba(0,0,0,0.45)] outline-none',
+              'transition-transform duration-150 ease-out-fluid focus-visible:ring-2 focus-visible:ring-accent active:scale-125',
+              props.smooth === true && 'transition-[left,transform] duration-500 ease-linear',
+            )}
+            aria-label={props.ariaLabel}
+          >
+            <KobalteSlider.Input />
+          </KobalteSlider.Thumb>
+        </KobalteSlider.Track>
+      </Show>
     </KobalteSlider>
   )
 }

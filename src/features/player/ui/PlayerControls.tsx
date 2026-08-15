@@ -60,14 +60,31 @@ export function PlayerControls(props: PlayerControlsProps) {
         variant={isFull() ? 'primary' : 'ghost'}
         iconOnly
         aria-label={isPlaying() ? 'Пауза' : 'Воспроизвести'}
-        class={cn('rounded-full', isFull() ? 'size-16' : 'min-h-11 min-w-11')}
+        class={cn(
+          'rounded-full transition-transform duration-150 ease-out-fluid active:scale-90',
+          isFull() ? 'size-16' : 'min-h-11 min-w-11',
+        )}
         onClick={() => player.toggle()}
       >
+        {/* `keyed` пересоздаёт иконку на каждой смене — без этого анимация не проигрывается. */}
         <Show
           when={isPlaying()}
-          fallback={<Play size={isFull() ? 28 : 24} fill="currentColor" aria-hidden="true" />}
+          keyed
+          fallback={
+            <Play
+              size={isFull() ? 28 : 24}
+              fill="currentColor"
+              class="animate-in fade-in-0 zoom-in-75 duration-150"
+              aria-hidden="true"
+            />
+          }
         >
-          <Pause size={isFull() ? 28 : 24} fill="currentColor" aria-hidden="true" />
+          <Pause
+            size={isFull() ? 28 : 24}
+            fill="currentColor"
+            class="animate-in fade-in-0 zoom-in-75 duration-150"
+            aria-hidden="true"
+          />
         </Show>
       </Button>
 

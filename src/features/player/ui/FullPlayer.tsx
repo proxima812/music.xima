@@ -1,8 +1,18 @@
 import { Dialog } from '@kobalte/core/dialog'
 import { ChevronDown, Heart, ListMusic, Music } from 'lucide-solid'
-import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from 'solid-js'
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from 'solid-js'
 
 import { glowGradient } from '@/shared/lib'
+import { resolveArtwork } from '@/shared/ui/CoverArt'
 import { EmptyState } from '@/shared/ui/EmptyState'
 import { IconButton } from '@/shared/ui/IconButton'
 import { clampDeckDrag, deckNeighbors, shouldCommitDeckSwipe } from '../model/deck'
@@ -34,7 +44,13 @@ export function FullPlayer() {
   let returnFocus: HTMLElement | null = null
 
   const viewportWidth = (): number => window.innerWidth
-  const neighbors = createMemo(() => deckNeighbors(player.queue, player.state.queueIndex))
+  const neighbors = createMemo(() =>
+    deckNeighbors(player.queue, player.state.queueIndex, player.state.repeat === 'ALL'),
+  )
+
+  /** Тянут влево — смотрим следующий трек, вправо — предыдущий. */
+  const hasAdjacentFor = (dx: number): boolean =>
+    (dx < 0 ? neighbors().next : neighbors().previous) !== null
 
   const clearTimer = (timer: ReturnType<typeof setTimeout> | null): void => {
     if (timer !== null) clearTimeout(timer)
@@ -66,14 +82,15 @@ export function FullPlayer() {
     threshold: DISMISS_THRESHOLD_PX,
     onMove: ({ dx, dy }) => {
       if (dx !== 0) {
-        setDragX(clampDeckDrag(dx, viewportWidth()))
+        setDragX(clampDeckDrag(dx, viewportWidth(), hasAdjacentFor(dx)))
         return
       }
       setDragY(dy > 0 ? dy : 0)
     },
     shouldCommit: (direction, end) => {
       if (direction === 'left' || direction === 'right') {
-        return shouldCommitDeckSwipe(end.dx, end.velocityX, viewportWidth())
+        const adjacent = direction === 'left' ? neighbors().next : neighbors().previous
+        return shouldCommitDeckSwipe(end.dx, end.velocityX, viewportWidth(), adjacent !== null)
       }
       return direction === 'down' && end.dy >= DISMISS_THRESHOLD_PX
     },
@@ -134,10 +151,39 @@ export function FullPlayer() {
   onCleanup(resetDeck)
 
   const subtitle = (): string => player.current?.artistName ?? 'Неизвестный исполнитель'
+
   const background = (): string => {
     const track = player.current
     if (track === null) return 'none'
     return glowGradient(`${track.albumTitle ?? track.title}·${track.artistName ?? ''}`)
+  }
+
+  /**
+   * Фон плеера — сильно размытая обложка текущего трека (так делает VK Музыка).
+   * Резолв идёт через тот же кэш, что и списки, поэтому лишнего запроса нет;
+   * если обложки у трека нет, размывается glow-градиент-заглушка.
+   */
+  const [backdrop] = createResource(
+    () => player.current?.coverKey ?? undefined,
+    (coverKey: string) => resolveArtwork(coverKey),
+  )
+
+  const [backdropBroken, setBackdropBroken] = createSignal(false)
+
+  // Не открылась картинка — не оставляем пустоту, уходим на градиент.
+  createEffect(
+    on(
+      () => player.current?.coverKey,
+      () => {
+        setBackdropBroken(false)
+      },
+      { defer: true },
+    ),
+  )
+
+  const backdropSource = (): string | undefined => {
+    if (backdropBroken()) return undefined
+    return backdrop() ?? undefined
   }
 
   return (
@@ -175,11 +221,34 @@ export function FullPlayer() {
             onTouchEnd={swipe.onTouchEnd}
             onTouchCancel={swipe.onTouchCancel}
           >
-            <div
-              class="pointer-events-none absolute inset-0 z-0 opacity-[0.14] transition-[background-image] duration-500 motion-reduce:transition-none"
-              style={{ 'background-image': background() }}
-              aria-hidden="true"
-            />
+            <div class="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
+              <Show
+                when={backdropSource()}
+                keyed
+                fallback={
+                  <div
+                    class="absolute inset-0 scale-125 opacity-60 blur-[64px]"
+                    style={{ 'background-image': background() }}
+                  />
+                }
+              >
+                {(source: string) => (
+                  <img
+                    src={source}
+                    alt=""
+                    class="animate-in fade-in-0 absolute inset-0 h-full w-full scale-125 object-cover opacity-70 blur-[64px] duration-700 ease-out"
+                    decoding="async"
+                    draggable={false}
+                    onError={() => {
+                      setBackdropBroken(true)
+                    }}
+                  />
+                )}
+              </Show>
+
+              {/* Тексту и кнопкам нужен контраст: гасим фон сверху и снизу. */}
+              <div class="absolute inset-0 bg-gradient-to-b from-background/70 via-background/25 to-background/88" />
+            </div>
 
             <div class="relative z-10 flex min-h-0 flex-1 flex-col gap-4">
               <div class="flex items-center justify-between gap-2" data-no-swipe="true">

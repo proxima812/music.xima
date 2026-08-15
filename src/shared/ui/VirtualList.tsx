@@ -1,5 +1,5 @@
 import { createVirtualizer } from '@tanstack/solid-virtual'
-import { createSignal, For, onMount, Show, type JSX } from 'solid-js'
+import { createMemo, createSignal, For, onMount, Show, type JSX } from 'solid-js'
 
 import { cn } from '@/shared/lib'
 
@@ -50,6 +50,39 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
     setScroller(element)
   })
 
+  const rows = createMemo(() => virtualizer.getVirtualItems())
+
+  /**
+   * Ключи для `<For>`. `getVirtualItems()` отдаёт новые объекты на каждом кадре
+   * прокрутки, а `<For>` сравнивает элементы по ссылке — по таким ключам он
+   * уничтожал и заново создавал **все** строки списка на каждом кадре. Числовые
+   * индексы сравниваются по значению, поэтому DOM переиспользуется, а
+   * создаются и удаляются только строки на краях окна.
+   */
+  const visibleIndexes = createMemo(() => rows().map((row) => row.index))
+
+  /**
+   * Высота распорки. До `onMount` виртуализатор не знает контейнера и отдаёт
+   * `0` — то есть на первой раскладке контейнер выглядит пустым.
+   *
+   * WebView решает, прокручиваемый ли блок, именно в этот момент, и **больше к
+   * этому решению не возвращается**: когда контент вырастает, скролл-узел не
+   * пересоздаётся. На устройстве это выглядело как «список вообще не листается
+   * пальцем», хотя `scrollTop` из кода работал. Ни смена `overflow`, ни
+   * пересборка стилей, ни изъятие элемента из DOM решение не отменяли —
+   * прокручивался только контейнер, созданный уже с содержимым.
+   *
+   * Поэтому на первый кадр считаем высоту сами, из тех же оценок размера.
+   */
+  const totalSize = createMemo(() => {
+    const measured = virtualizer.getTotalSize()
+    if (measured > 0) return measured
+
+    let sum = 0
+    for (let index = 0; index < props.items.length; index += 1) sum += estimateSize(index)
+    return sum
+  })
+
   // `flex-1` работает внутри flex-колонки (экран с TopBar), `h-full` — в обычном блоке.
   return (
     <div
@@ -61,19 +94,30 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
     >
       <div
         class={cn('relative w-full', props.contentClass)}
-        style={{ height: `${virtualizer.getTotalSize()}px` }}
+        style={{ height: `${totalSize()}px` }}
       >
-        <For each={virtualizer.getVirtualItems()}>
-          {(row) => (
-            <div
-              class="absolute inset-x-0 top-0"
-              style={{ height: `${row.size}px`, transform: `translateY(${row.start}px)` }}
-            >
-              <Show when={props.items[row.index]}>
-                {(item) => props.children(item(), row.index)}
+        <For each={visibleIndexes()}>
+          {(index) => {
+            // Строку ищем по индексу, а не берём объект из `<For>`: он новый на
+            // каждом кадре, и вместе с ним пересоздавался бы весь DOM.
+            const row = createMemo(() => rows().find((candidate) => candidate.index === index))
+
+            return (
+              <Show when={row()}>
+                {(current) => (
+                  <div
+                    class="absolute inset-x-0 top-0"
+                    style={{
+                      height: `${current().size}px`,
+                      transform: `translateY(${current().start}px)`,
+                    }}
+                  >
+                    <Show when={props.items[index]}>{(item) => props.children(item(), index)}</Show>
+                  </div>
+                )}
               </Show>
-            </div>
-          )}
+            )
+          }}
         </For>
       </div>
     </div>

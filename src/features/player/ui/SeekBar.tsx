@@ -83,6 +83,8 @@ export function SeekBar(props: SeekBarProps) {
   return (
     <div class={cn('flex w-full flex-col gap-1', props.class)} data-no-swipe="true">
       <Slider
+        variant="media"
+        smooth={dragValue() === null}
         value={value()}
         min={0}
         max={duration() === 0 ? STEP_MS : duration()}

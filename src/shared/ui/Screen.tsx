@@ -19,7 +19,8 @@ export function Screen(props: ScreenProps) {
   return (
     <div
       class={cn(
-        'flex h-full min-h-0 w-full flex-col',
+        'mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col',
+        'animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ease-out-fluid',
         scrollable()
           ? 'overflow-y-auto overscroll-contain scrollbar-none pb-player-stack'
           : 'overflow-hidden',
