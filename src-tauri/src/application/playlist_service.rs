@@ -130,7 +130,7 @@ impl PlaylistService {
     /// Resolves an unsaved draft. The result feeds a preview list, so an
     /// unbounded draft is still capped at one page.
     pub async fn smart_preview(&self, draft: &SmartPlaylistDraft) -> CoreResult<Vec<Track>> {
-        let draft = validated_draft(draft)?;
+        let draft = previewable_draft(draft)?;
         let limit = draft.limit.unwrap_or(MAX_PAGE_LIMIT).min(MAX_PAGE_LIMIT);
         self.smart
             .resolve(&draft.rules, draft.match_all, draft.sort, Some(limit))
@@ -141,12 +141,23 @@ impl PlaylistService {
 /// A rule-less smart playlist would select the whole library, which is what the
 /// plain library screen is for; the domain check covers everything else.
 fn validated_draft(draft: &SmartPlaylistDraft) -> CoreResult<SmartPlaylistDraft> {
+    require_rules(draft)?;
+    draft.validated()
+}
+
+/// Same, minus the name: the preview runs while the playlist is still unnamed.
+fn previewable_draft(draft: &SmartPlaylistDraft) -> CoreResult<SmartPlaylistDraft> {
+    require_rules(draft)?;
+    draft.validated_rules()
+}
+
+fn require_rules(draft: &SmartPlaylistDraft) -> CoreResult<()> {
     if draft.rules.is_empty() {
         return Err(CoreError::invalid_input(
             "smart playlist needs at least one rule",
         ));
     }
-    draft.validated()
+    Ok(())
 }
 
 #[cfg(test)]
@@ -507,5 +518,48 @@ mod tests {
 
         let calls = smart_repo.resolved.lock().expect("lock").clone();
         assert_eq!(calls[0].3, Some(MAX_PAGE_LIMIT));
+    }
+
+    #[tokio::test]
+    async fn smart_preview_runs_before_the_playlist_is_named() {
+        let (service, _, smart_repo) = service();
+        let mut unnamed = draft(vec![SmartRule::NeverPlayed]);
+        unnamed.name = String::new();
+
+        service.smart_preview(&unnamed).await.expect("preview");
+
+        assert_eq!(smart_repo.resolved.lock().expect("lock").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn saving_still_demands_a_name() {
+        let (service, _, _) = service();
+        let mut unnamed = draft(vec![SmartRule::NeverPlayed]);
+        unnamed.name = "   ".to_owned();
+
+        assert_eq!(
+            service
+                .smart_create(&unnamed)
+                .await
+                .expect_err("name is required")
+                .code(),
+            "INVALID_INPUT"
+        );
+    }
+
+    #[tokio::test]
+    async fn preview_still_needs_at_least_one_rule() {
+        let (service, _, smart_repo) = service();
+        let empty = draft(Vec::new());
+
+        assert_eq!(
+            service
+                .smart_preview(&empty)
+                .await
+                .expect_err("rules are required")
+                .code(),
+            "INVALID_INPUT"
+        );
+        assert!(smart_repo.resolved.lock().expect("lock").is_empty());
     }
 }

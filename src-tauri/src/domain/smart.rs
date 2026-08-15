@@ -203,6 +203,17 @@ impl SmartPlaylistDraft {
     /// Returns the draft with the name trimmed, after checking every rule.
     pub fn validated(&self) -> CoreResult<Self> {
         let name = sanitize_playlist_name(&self.name)?;
+        Ok(Self {
+            name,
+            ..self.validated_rules()?
+        })
+    }
+
+    /// Everything except the name: rules and limit.
+    ///
+    /// A preview saves nothing, so demanding a name while the user is still
+    /// assembling the rules only produces an error where a track list belongs.
+    pub fn validated_rules(&self) -> CoreResult<Self> {
         for rule in &self.rules {
             rule.validate()?;
         }
@@ -210,7 +221,7 @@ impl SmartPlaylistDraft {
             require(limit > 0, "limit must be positive")?;
         }
         Ok(Self {
-            name,
+            name: self.name.clone(),
             rules: self.rules.clone(),
             match_all: self.match_all,
             sort: self.sort,
