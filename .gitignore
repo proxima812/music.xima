@@ -28,3 +28,10 @@ src/assets/*.mp3
 # Local env
 .env
 .env.local
+
+# Рабочий мусор локальной машины: заметки, выгрузки, скачанная музыка
+.superpowers/
+downloads_music/
+output/
+_vk.html
+_vk.txt

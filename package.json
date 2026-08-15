@@ -1,6 +1,6 @@
 {
   "name": "music-xima",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,6 +12,7 @@
     "tauri": "tauri",
     "android:dev": "tauri android dev",
     "android:build": "tauri android build",
+    "release:sign": "bash scripts/sign-release.sh",
     "rust:fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml --all",
     "rust:lint": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml"

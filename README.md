@@ -52,6 +52,21 @@ npm run android:build -- --debug --apk --target aarch64
 
 APK появится в `src-tauri/gen/android/app/build/outputs/apk/universal/debug/`.
 
+### Релиз
+
+```bash
+npm run android:build -- --apk                    # release, все ABI, без подписи
+MX_KEYSTORE_PASS='…' npm run release:sign         # выравнивание, подпись, проверка
+```
+
+Подпись — отдельным шагом, а не через `signingConfig` в Gradle: конфиг пришлось
+бы держать в `src-tauri/gen/android`, а эта папка перезаписывается каждым
+`tauri android init` (BUGS.md, B1). Ключ по умолчанию —
+`~/.android/music-xima-release.jks`, ключ `music-xima`; путь и имя переопределяются
+переменными `MX_KEYSTORE` и `MX_KEY_ALIAS`. **Хранилище и пароль в репозиторий не
+попадают и восстановлению не подлежат** — потеряете пароль, обновить установленное
+приложение уже нечем.
+
 Музыку в репозиторий не кладём. Для теста достаточно закинуть файлы на телефон:
 
 ```bash
