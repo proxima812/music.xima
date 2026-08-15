@@ -1,4 +1,12 @@
-import { createEffect, createResource, createSignal, on, Show, type JSX } from 'solid-js'
+import {
+  createEffect,
+  createSignal,
+  on,
+  onCleanup,
+  Show,
+  type Accessor,
+  type JSX,
+} from 'solid-js'
 
 import { artworkUri } from '@/shared/ipc'
 import { cn, glowGradient } from '@/shared/lib'
@@ -42,6 +50,65 @@ export function clearArtworkCache(): void {
   inFlight.clear()
 }
 
+export type Artwork = {
+  /** URI обложки либо `null`: её нет, ещё грузится или запрос упал. */
+  uri: Accessor<string | null>
+  loading: Accessor<boolean>
+}
+
+/**
+ * Обложка по ключу — на сигналах и **намеренно без `createResource`**.
+ *
+ * Ресурс, прочитанный в разметке пока он грузится, поднимает ближайший
+ * `<Suspense>`, а он в приложении один — общий, в `App.tsx`. Обложка живёт в
+ * каждой строке списка, и стоило прокрутке втянуть новую строку, как общий
+ * бандер уходил в fallback: Solid вынимал экран из `main` и вставлял обратно, а
+ * прокрутка контейнера при этом обнулялась. Снаружи это выглядело как «список
+ * не листается пальцем» — палец уводил список на 20–30 px, и тот прыгал в
+ * начало (docs/BUGS.md, B8).
+ *
+ * Уже разрешённый ключ отдаётся синхронно — при прокрутке нет и мигания
+ * скелетоном на строках, которые уже показывались.
+ */
+export function createArtwork(coverKey: Accessor<string | null | undefined>): Artwork {
+  const [uri, setUri] = createSignal<string | null>(null)
+  const [loading, setLoading] = createSignal(false)
+
+  createEffect(() => {
+    const key = coverKey()
+
+    if (key === undefined || key === null) {
+      setUri(null)
+      setLoading(false)
+      return
+    }
+
+    const cached = resolved.get(key)
+    if (cached !== undefined) {
+      setUri(cached)
+      setLoading(false)
+      return
+    }
+
+    // Ключ сменился, пока запрос летел, — ответ уже не наш.
+    let stale = false
+    onCleanup(() => {
+      stale = true
+    })
+
+    setUri(null)
+    setLoading(true)
+
+    void resolveArtwork(key).then((value) => {
+      if (stale) return
+      setUri(value)
+      setLoading(false)
+    })
+  })
+
+  return { uri, loading }
+}
+
 export type CoverArtSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full'
 
 export type CoverArtRounded = 'none' | 'sm' | 'md' | 'lg' | 'full'
@@ -82,10 +149,7 @@ const ROUNDED_CLASSES: Record<CoverArtRounded, string> = {
 export function CoverArt(props: CoverArtProps) {
   const [broken, setBroken] = createSignal(false)
 
-  const [source] = createResource(
-    () => props.coverKey ?? undefined,
-    (coverKey: string) => resolveArtwork(coverKey),
-  )
+  const artwork = createArtwork(() => props.coverKey)
 
   createEffect(
     on(
@@ -107,8 +171,7 @@ export function CoverArt(props: CoverArtProps) {
 
   const uri = (): string | undefined => {
     if (broken()) return undefined
-    const value = source()
-    return value === null || value === undefined ? undefined : value
+    return artwork.uri() ?? undefined
   }
 
   /** Семя заглушки. Ключ обложки стабильнее названия, поэтому он первый. */
@@ -124,14 +187,14 @@ export function CoverArt(props: CoverArtProps) {
       )}
       style={sizeStyle()}
     >
-      <Show when={source.loading}>
+      <Show when={artwork.loading()}>
         <Skeleton class="absolute inset-0 h-full w-full rounded-none" />
       </Show>
 
       <Show
         when={uri()}
         fallback={
-          <Show when={!source.loading}>
+          <Show when={!artwork.loading()}>
             <div
               class="absolute inset-0 h-full w-full"
               style={{ 'background-image': glowGradient(seed()) }}
@@ -144,7 +207,7 @@ export function CoverArt(props: CoverArtProps) {
           <img
             src={src()}
             alt={props.alt ?? ''}
-            class="h-full w-full object-cover"
+            class="animate-in fade-in-0 h-full w-full object-cover duration-300 ease-out"
             loading="lazy"
             decoding="async"
             draggable={false}

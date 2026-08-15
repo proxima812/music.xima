@@ -487,6 +487,11 @@ function ArtistField(props: { artistId: number; onChange: (artistId: number) => 
     },
   )
 
+  // Читаем только осевший ресурс: чтение в загрузке поднимает общий
+  // `<Suspense>` из `App.tsx`, а тот вынимает из DOM весь экран (BUGS.md, B8).
+  const selectedName = (): string =>
+    (selected.loading ? undefined : selected()?.name) ?? 'Выбрать исполнителя'
+
   return (
     <div class="flex flex-col gap-1">
       <span class="label">{ruleFieldLabel('ARTIST_IS', 'artistId')}</span>
@@ -498,7 +503,7 @@ function ArtistField(props: { artistId: number; onChange: (artistId: number) => 
           setOpen(true)
         }}
       >
-        <span class="truncate">{selected()?.name ?? 'Выбрать исполнителя'}</span>
+        <span class="truncate">{selectedName()}</span>
       </Button>
 
       <Sheet

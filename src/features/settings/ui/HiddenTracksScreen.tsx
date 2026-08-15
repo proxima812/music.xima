@@ -3,6 +3,7 @@ import { ChevronLeft, EyeOff } from 'lucide-solid'
 import { createResource, createSignal, For, Match, Switch } from 'solid-js'
 
 import { toIpcError, trackHidden, trackRestore, type HiddenTrack } from '@/shared/ipc'
+import { settled } from '@/shared/lib'
 import { Button, EmptyState, IconButton, Screen, Spinner, TopBar, toast } from '@/shared/ui'
 
 /** Скрытые песни: здесь можно только вернуть их в библиотеку. */
@@ -11,8 +12,12 @@ export function HiddenTracksScreen() {
   const [hiddenTracks, { mutate, refetch }] = createResource(trackHidden)
   const [restoringId, setRestoringId] = createSignal<number | null>(null)
 
+  // Значение читаем зеркалом: прямое чтение ресурса в загрузке поднимает общий
+  // `<Suspense>`, и возврат песни вынимал бы экран из DOM (docs/BUGS.md, B8).
+  const hidden = settled(hiddenTracks)
+
   const items = (): HiddenTrack[] =>
-    [...(hiddenTracks() ?? [])].sort((left, right) => right.hiddenAt - left.hiddenAt)
+    [...(hidden() ?? [])].sort((left, right) => right.hiddenAt - left.hiddenAt)
 
   const restore = (item: HiddenTrack): void => {
     if (restoringId() !== null) return
@@ -54,13 +59,13 @@ export function HiddenTracksScreen() {
       />
 
       <Switch>
-        <Match when={hiddenTracks.loading && hiddenTracks() === undefined}>
+        <Match when={hiddenTracks.loading && hidden() === undefined}>
           <div class="flex flex-1 items-center justify-center">
             <Spinner label="Загрузка скрытых песен" />
           </div>
         </Match>
 
-        <Match when={hiddenTracks.error !== undefined && hiddenTracks() === undefined}>
+        <Match when={hiddenTracks.error !== undefined && hidden() === undefined}>
           <EmptyState
             icon={<EyeOff aria-hidden="true" />}
             title="Не удалось загрузить скрытые песни"

@@ -13,7 +13,7 @@ import {
   type ScanMode,
   type ScanStatus,
 } from '@/shared/ipc'
-import { formatCount } from '@/shared/lib'
+import { formatCount, settled } from '@/shared/lib'
 import {
   Button,
   clearArtworkCache,
@@ -93,7 +93,11 @@ export function LibrarySection() {
     if (!same) settings.set('scanRoots', [...list])
   })
 
-  const rootList = (): readonly string[] => roots() ?? []
+  // Зеркало, а не сам ресурс: чтение в загрузке поднимает общий `<Suspense>`,
+  // и добавление папки вынимало бы экран настроек из DOM (docs/BUGS.md, B8).
+  const settledRoots = settled(roots)
+
+  const rootList = (): readonly string[] => settledRoots() ?? []
 
   const progress = (): number | null => {
     const current = status()

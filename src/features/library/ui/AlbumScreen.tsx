@@ -5,7 +5,7 @@ import { createResource, createSignal, For, Match, Show, Switch } from 'solid-js
 import { usePlayer } from '@/features/player/model/player-store'
 import { TrackMenu } from '@/features/player/ui/TrackMenu'
 import { libraryAlbum, libraryAlbumTracks, type Track } from '@/shared/ipc'
-import { formatDurationHuman, formatPlural } from '@/shared/lib'
+import { formatDurationHuman, formatPlural, settled } from '@/shared/lib'
 import { CoverArt, IconButton, Screen, Skeleton, TrackRow, TopBar } from '@/shared/ui'
 import { libraryVersion, TRACK_FORMS } from '../model/library-store'
 import { EmptyLibraryState, ErrorState, ListSkeleton, PlaybackButtons } from './LibraryStates'
@@ -31,7 +31,12 @@ export function AlbumScreen() {
   const [album, albumActions] = createResource(source, (key) => libraryAlbum(key.id))
   const [tracks, trackActions] = createResource(source, (key) => libraryAlbumTracks(key.id))
 
-  const items = (): readonly Track[] => tracks() ?? []
+  // Ресурсы читаются через зеркала: прямое чтение поднимает общий `<Suspense>`,
+  // и `library:changed` вынимал бы открытый экран из DOM (docs/BUGS.md, B8).
+  const currentAlbum = settled(album)
+  const settledTracks = settled(tracks)
+
+  const items = (): readonly Track[] => settledTracks() ?? []
 
   const reload = (): void => {
     void albumActions.refetch()
@@ -59,7 +64,7 @@ export function AlbumScreen() {
   }
 
   const meta = (): string => {
-    const current = album()
+    const current = currentAlbum()
     if (current === undefined) return ''
 
     const parts: string[] = []
@@ -72,7 +77,7 @@ export function AlbumScreen() {
   return (
     <Screen>
       <TopBar
-        title={album()?.title ?? 'Альбом'}
+        title={currentAlbum()?.title ?? 'Альбом'}
         left={
           <IconButton
             label="Назад"
@@ -99,7 +104,7 @@ export function AlbumScreen() {
           <ErrorState message={errorMessage(album.error ?? tracks.error)} onRetry={reload} />
         </Match>
 
-        <Match when={album()}>
+        <Match when={currentAlbum()}>
           {(current) => (
             <>
               <div class="flex flex-col items-center gap-3 px-6 pt-2 pb-4">

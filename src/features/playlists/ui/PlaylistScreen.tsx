@@ -9,11 +9,11 @@ import {
   Trash2,
   TriangleAlert,
 } from 'lucide-solid'
-import { createResource, createSignal, For, Show, type JSX, type Resource } from 'solid-js'
+import { createResource, createSignal, For, Show, type Accessor, type JSX } from 'solid-js'
 
 import { usePlayer } from '@/features/player/model/player-store'
 import { playlistGet, playlistTracks, type Playlist, type Track } from '@/shared/ipc'
-import { formatDurationHuman, formatPlural } from '@/shared/lib'
+import { formatDurationHuman, formatPlural, settled } from '@/shared/lib'
 import {
   Button,
   ConfirmDialog,
@@ -70,7 +70,13 @@ export function PlaylistScreen() {
 
   let dragStartY = 0
 
-  const items = (): readonly Track[] => tracks() ?? []
+  // Ресурсы читаются через зеркала: прямое чтение поднимает общий `<Suspense>`,
+  // и любая перезагрузка после правки вынимала бы экран из DOM вместе с
+  // прокруткой и перетаскиванием строки (docs/BUGS.md, B8).
+  const current = settled(playlist)
+  const settledTracks = settled(tracks)
+
+  const items = (): readonly Track[] => settledTracks() ?? []
 
   const trackIds = (): number[] => items().map((track) => track.id)
 
@@ -178,7 +184,7 @@ export function PlaylistScreen() {
   return (
     <Screen>
       <TopBar
-        title={playlist()?.name ?? 'Плейлист'}
+        title={current()?.name ?? 'Плейлист'}
         left={
           <IconButton
             label="Назад"
@@ -190,7 +196,7 @@ export function PlaylistScreen() {
           </IconButton>
         }
         right={
-          <Show when={playlist() !== undefined}>
+          <Show when={current() !== undefined}>
             <Menu items={menuItems()} label="Меню плейлиста" />
           </Show>
         }
@@ -212,7 +218,7 @@ export function PlaylistScreen() {
         }
       >
         <Show
-          when={playlist()}
+          when={current()}
           fallback={
             <div class="flex justify-center py-12">
               <Spinner size="lg" color="accent" />
@@ -223,7 +229,7 @@ export function PlaylistScreen() {
             <>
               <Header
                 playlist={current()}
-                tracks={tracks}
+                tracks={settledTracks}
                 onPlay={() => play(0)}
                 onShuffle={shuffle}
               />
@@ -299,7 +305,7 @@ export function PlaylistScreen() {
 /** Шапка: обложка-мозаика, название, объём и кнопки воспроизведения. */
 function Header(props: {
   playlist: Playlist
-  tracks: Resource<Track[]>
+  tracks: Accessor<Track[] | undefined>
   onPlay: () => void
   onShuffle: () => void
 }) {

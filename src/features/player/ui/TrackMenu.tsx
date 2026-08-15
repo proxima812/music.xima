@@ -18,6 +18,7 @@ import {
   For,
   Match,
   Show,
+  Suspense,
   Switch,
   type JSX,
 } from 'solid-js'
@@ -333,40 +334,53 @@ export function TrackMenu(props: TrackMenuProps) {
                     </Button>
                   </div>
 
-                  <Show
-                    when={playlists()}
+                  {/*
+                    Ждём список плейлистов своей границей. Общая, из `App.tsx`,
+                    на время загрузки вынимает из DOM экран под меню — вместе с
+                    его прокруткой (docs/BUGS.md, B8).
+                  */}
+                  <Suspense
                     fallback={
                       <div class="flex justify-center py-6">
                         <Spinner />
                       </div>
                     }
                   >
-                    {(items) => (
-                      <Show
-                        when={items().length > 0}
-                        fallback={
-                          <EmptyState
-                            icon={<ListMusic aria-hidden="true" />}
-                            title="Плейлистов пока нет"
-                            description="Создайте первый — трек попадёт сразу в него."
-                          />
-                        }
-                      >
-                        <div class="menu -mx-2 gap-0.5 p-0">
-                          <For each={items()}>
-                            {(playlist) => (
-                              <ActionRow
-                                icon={<ListMusic size={18} aria-hidden="true" />}
-                                label={playlist.name}
-                                hint={formatCount(playlist.trackCount)}
-                                onClick={() => addToPlaylist(playlist, track())}
-                              />
-                            )}
-                          </For>
+                    <Show
+                      when={playlists()}
+                      fallback={
+                        <div class="flex justify-center py-6">
+                          <Spinner />
                         </div>
-                      </Show>
-                    )}
-                  </Show>
+                      }
+                    >
+                      {(items) => (
+                        <Show
+                          when={items().length > 0}
+                          fallback={
+                            <EmptyState
+                              icon={<ListMusic aria-hidden="true" />}
+                              title="Плейлистов пока нет"
+                              description="Создайте первый — трек попадёт сразу в него."
+                            />
+                          }
+                        >
+                          <div class="menu -mx-2 gap-0.5 p-0">
+                            <For each={items()}>
+                              {(playlist) => (
+                                <ActionRow
+                                  icon={<ListMusic size={18} aria-hidden="true" />}
+                                  label={playlist.name}
+                                  hint={formatCount(playlist.trackCount)}
+                                  onClick={() => addToPlaylist(playlist, track())}
+                                />
+                              )}
+                            </For>
+                          </div>
+                        </Show>
+                      )}
+                    </Show>
+                  </Suspense>
 
                   <Button variant="ghost" onClick={() => setPanel('actions')}>
                     Назад

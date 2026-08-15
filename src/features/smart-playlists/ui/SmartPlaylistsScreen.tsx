@@ -10,6 +10,7 @@ import {
   smartPlaylistResolve,
   type SmartPlaylist,
 } from '@/shared/ipc'
+import { settled } from '@/shared/lib'
 import {
   Button,
   ConfirmDialog,
@@ -32,10 +33,14 @@ export function SmartPlaylistsScreen() {
   const [playlists, { refetch }] = createResource(() => smartPlaylistList())
   const [pendingDelete, setPendingDelete] = createSignal<SmartPlaylist | null>(null)
 
+  // Ресурсы читаются через зеркала: прямое чтение поднимает общий `<Suspense>`,
+  // а тот на время загрузки вынимает из DOM весь экран (docs/BUGS.md, B8).
+  const items = settled(playlists)
+
   // Правило ARTIST_IS хранит только id — имена подтягиваем, чтобы описание читалось.
   const artistIds = (): number[] => {
     const ids = new Set<number>()
-    for (const playlist of playlists() ?? []) {
+    for (const playlist of items() ?? []) {
       for (const rule of playlist.rules) {
         if (rule.kind === 'ARTIST_IS' && rule.artistId > 0) ids.add(rule.artistId)
       }
@@ -62,8 +67,10 @@ export function SmartPlaylistsScreen() {
     },
   )
 
+  const settledNames = settled(artistNames)
+
   const names = (): RuleNames => {
-    const map = artistNames()
+    const map = settledNames()
     return map === undefined ? {} : { artistNames: map }
   }
 
@@ -114,7 +121,7 @@ export function SmartPlaylistsScreen() {
         }
       >
         <Show
-          when={(playlists() ?? []).length > 0}
+          when={(items() ?? []).length > 0}
           fallback={
             <EmptyState
               class="min-h-[50vh]"
@@ -135,7 +142,7 @@ export function SmartPlaylistsScreen() {
           }
         >
           <div class="flex flex-col gap-2 px-4 pt-2 pb-6">
-            <For each={playlists() ?? []}>
+            <For each={items() ?? []}>
               {(playlist) => (
                 <SmartPlaylistRow
                   playlist={playlist}
@@ -276,7 +283,16 @@ function SmartPlaylistRow(props: SmartPlaylistRowProps) {
         <span class="flex min-w-0 flex-1 flex-col gap-1">
           <span class="truncate text-sm font-medium text-foreground">{props.playlist.name}</span>
           <span class="flex min-w-0 items-center gap-1.5 text-xs text-muted">
-            <Show when={tracks()} fallback={<Skeleton class="h-3 w-14 shrink-0 rounded-full" />}>
+            {/*
+              Только осевший ресурс. Чтение в загрузке поднимает общий
+              `<Suspense>` из `App.tsx`, а тот вынимает из DOM весь экран:
+              строки считают треки по мере появления в окне прокрутки, и
+              список дёргался бы на каждой (docs/BUGS.md, B8).
+            */}
+            <Show
+              when={tracks.loading ? undefined : tracks()}
+              fallback={<Skeleton class="h-3 w-14 shrink-0 rounded-full" />}
+            >
               {(items) => (
                 <span class="shrink-0 tabular-nums">{formatTrackCount(items().length)}</span>
               )}

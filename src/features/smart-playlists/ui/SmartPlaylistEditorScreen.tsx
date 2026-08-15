@@ -19,10 +19,12 @@ import {
   smartPlaylistGet,
   smartPlaylistPreview,
   smartPlaylistUpdate,
+  toIpcError,
   type SmartPlaylistDraft,
   type SmartRule,
+  type Track,
 } from '@/shared/ipc'
-import { debounce, formatPlural } from '@/shared/lib'
+import { debounce, formatPlural, settled } from '@/shared/lib'
 import {
   Button,
   EmptyState,
@@ -84,11 +86,16 @@ export function SmartPlaylistEditorScreen() {
 
   const [existing] = createResource(editingId, (id: number) => smartPlaylistGet(id))
 
+  // Зеркало для разметки: прямое чтение поднимает общий `<Suspense>` (BUGS.md, B8).
+  const loaded = settled(existing)
+
   const [draft, setDraft] = createSignal<SmartPlaylistDraft>(emptyDraft())
   const [saving, setSaving] = createSignal(false)
   const [addOpen, setAddOpen] = createSignal(false)
 
   createEffect(() => {
+    // Читать упавший ресурс нельзя: обращение к нему бросает исключение.
+    if (existing.error !== undefined && existing.error !== null) return
     const playlist = existing()
     if (playlist !== undefined) setDraft(draftFrom(playlist))
   })
@@ -105,7 +112,12 @@ export function SmartPlaylistEditorScreen() {
     schedulePreview.cancel()
   })
 
-  const rulesValid = (): boolean => draft().rules.every((rule) => validateRule(rule) === null)
+  /**
+   * Ядро отвергает черновик без правил (`INVALID_INPUT`), поэтому пустой набор
+   * считаем неготовым и предпросмотр не запрашиваем вовсе.
+   */
+  const rulesValid = (): boolean =>
+    draft().rules.length > 0 && draft().rules.every((rule) => validateRule(rule) === null)
 
   createEffect(() => {
     const value = draft()
@@ -120,6 +132,24 @@ export function SmartPlaylistEditorScreen() {
   const [preview] = createResource(previewDraft, (value: SmartPlaylistDraft) =>
     smartPlaylistPreview(value),
   )
+
+  /**
+   * Чтение `preview()` у упавшего ресурса бросает исключение, а ловить его
+   * некому: ближайший `Suspense` — общий для всего приложения, и экран
+   * навсегда остаётся спиннером. Поэтому сначала всегда смотрим `.error`.
+   */
+  const previewError = (): string | null => {
+    const cause: unknown = preview.error
+    return cause === undefined || cause === null ? null : toIpcError(cause).message
+  }
+
+  /**
+   * Пока запрос летит, к `preview()` не прикасаемся вовсе. Ресурс, прочитанный
+   * в загрузке, поднимает тот же общий `Suspense`, и правка любого условия
+   * вынимала бы экран редактора из DOM прямо под руками (docs/BUGS.md, B8).
+   */
+  const previewTracks = (): readonly Track[] =>
+    previewError() !== null || preview.loading ? [] : (preview() ?? [])
 
   // ─── правила ───────────────────────────────────────────────────────────────
 
@@ -177,14 +207,15 @@ export function SmartPlaylistEditorScreen() {
   }
 
   const previewSummary = (): string => {
+    if (draft().rules.length === 0) return 'Добавьте условие'
     if (!rulesValid()) return 'Проверьте условия'
-    const tracks = preview()
-    if (preview.loading || tracks === undefined) return 'Подбираем треки'
-    return formatTrackCount(tracks.length)
+    if (previewError() !== null) return 'Предпросмотр недоступен'
+    if (preview.loading || preview() === undefined) return 'Подбираем треки'
+    return formatTrackCount(previewTracks().length)
   }
 
   const playPreview = (startIndex: number): void => {
-    const ids = (preview() ?? []).map((track) => track.id)
+    const ids = previewTracks().map((track) => track.id)
     if (ids.length === 0) return
     player.playTracks(ids, startIndex)
   }
@@ -211,7 +242,7 @@ export function SmartPlaylistEditorScreen() {
       />
 
       <Show
-        when={editingId() === undefined || existing() !== undefined}
+        when={editingId() === undefined || loaded() !== undefined}
         fallback={
           <div class="flex justify-center py-10">
             <Spinner />
@@ -252,7 +283,7 @@ export function SmartPlaylistEditorScreen() {
             title="Условия"
             description={
               draft().rules.length === 0
-                ? 'Без условий в плейлист попадёт вся библиотека'
+                ? 'Нужно хотя бы одно условие'
                 : formatPlural(draft().rules.length, RULE_FORMS)
             }
             action={
@@ -340,7 +371,7 @@ export function SmartPlaylistEditorScreen() {
             title="Предпросмотр"
             description={previewSummary()}
             action={
-              <Show when={(preview() ?? []).length > 0}>
+              <Show when={previewTracks().length > 0}>
                 <IconButton
                   label="Слушать предпросмотр"
                   onClick={() => {
@@ -357,10 +388,18 @@ export function SmartPlaylistEditorScreen() {
             when={rulesValid()}
             fallback={
               <p class="px-4 py-3 text-sm text-muted">
-                Исправьте условия — предпросмотр обновится сам.
+                {draft().rules.length === 0
+                  ? 'Добавьте хотя бы одно условие — предпросмотр появится сам.'
+                  : 'Исправьте условия — предпросмотр обновится сам.'}
               </p>
             }
           >
+            <Show
+              when={previewError() === null}
+              fallback={
+                <p class="px-4 py-3 text-sm text-danger">{previewError()}</p>
+              }
+            >
             <Show
               when={!preview.loading && preview() !== undefined}
               fallback={
@@ -370,7 +409,7 @@ export function SmartPlaylistEditorScreen() {
               }
             >
               <Show
-                when={(preview() ?? []).length > 0}
+                when={previewTracks().length > 0}
                 fallback={
                   <EmptyState
                     icon={<Sparkles aria-hidden="true" />}
@@ -379,7 +418,7 @@ export function SmartPlaylistEditorScreen() {
                   />
                 }
               >
-                <For each={(preview() ?? []).slice(0, PREVIEW_ROWS)}>
+                <For each={previewTracks().slice(0, PREVIEW_ROWS)}>
                   {(track, index) => (
                     <TrackRow
                       track={track}
@@ -390,13 +429,14 @@ export function SmartPlaylistEditorScreen() {
                   )}
                 </For>
 
-                <Show when={(preview() ?? []).length > PREVIEW_ROWS}>
+                <Show when={previewTracks().length > PREVIEW_ROWS}>
                   <p class="px-4 py-3 text-xs text-muted">
                     Показаны первые {String(PREVIEW_ROWS)} из{' '}
-                    {formatTrackCount((preview() ?? []).length)}
+                    {formatTrackCount(previewTracks().length)}
                   </p>
                 </Show>
               </Show>
+            </Show>
             </Show>
           </Show>
         </section>

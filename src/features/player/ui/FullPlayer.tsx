@@ -3,7 +3,6 @@ import { ChevronDown, Heart, ListMusic, Music } from 'lucide-solid'
 import {
   createEffect,
   createMemo,
-  createResource,
   createSignal,
   on,
   onCleanup,
@@ -12,7 +11,7 @@ import {
 } from 'solid-js'
 
 import { glowGradient } from '@/shared/lib'
-import { resolveArtwork } from '@/shared/ui/CoverArt'
+import { createArtwork } from '@/shared/ui/CoverArt'
 import { EmptyState } from '@/shared/ui/EmptyState'
 import { IconButton } from '@/shared/ui/IconButton'
 import { clampDeckDrag, deckNeighbors, shouldCommitDeckSwipe } from '../model/deck'
@@ -163,10 +162,7 @@ export function FullPlayer() {
    * Резолв идёт через тот же кэш, что и списки, поэтому лишнего запроса нет;
    * если обложки у трека нет, размывается glow-градиент-заглушка.
    */
-  const [backdrop] = createResource(
-    () => player.current?.coverKey ?? undefined,
-    (coverKey: string) => resolveArtwork(coverKey),
-  )
+  const backdrop = createArtwork(() => player.current?.coverKey)
 
   const [backdropBroken, setBackdropBroken] = createSignal(false)
 
@@ -183,7 +179,7 @@ export function FullPlayer() {
 
   const backdropSource = (): string | undefined => {
     if (backdropBroken()) return undefined
-    return backdrop() ?? undefined
+    return backdrop.uri() ?? undefined
   }
 
   return (

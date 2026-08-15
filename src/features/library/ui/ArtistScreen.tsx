@@ -11,7 +11,7 @@ import {
   type Album,
   type Track,
 } from '@/shared/ipc'
-import { formatPlural } from '@/shared/lib'
+import { formatPlural, settled } from '@/shared/lib'
 import {
   CoverArt,
   IconButton,
@@ -52,8 +52,14 @@ export function ArtistScreen() {
   const [albums, albumActions] = createResource(source, (key) => libraryArtistAlbums(key.id))
   const [tracks, trackActions] = createResource(source, (key) => libraryArtistTracks(key.id))
 
-  const items = (): readonly Track[] => tracks() ?? []
-  const artistAlbums = (): readonly Album[] => albums() ?? []
+  // Ресурсы читаются через зеркала: прямое чтение поднимает общий `<Suspense>`,
+  // и `library:changed` вынимал бы открытый экран из DOM (docs/BUGS.md, B8).
+  const current = settled(artist)
+  const settledAlbums = settled(albums)
+  const settledTracks = settled(tracks)
+
+  const items = (): readonly Track[] => settledTracks() ?? []
+  const artistAlbums = (): readonly Album[] => settledAlbums() ?? []
 
   const reload = (): void => {
     void artistActions.refetch()
@@ -84,7 +90,7 @@ export function ArtistScreen() {
   return (
     <Screen>
       <TopBar
-        title={artist()?.name ?? 'Исполнитель'}
+        title={current()?.name ?? 'Исполнитель'}
         left={
           <IconButton
             label="Назад"
@@ -118,7 +124,7 @@ export function ArtistScreen() {
           />
         </Match>
 
-        <Match when={artist()}>
+        <Match when={current()}>
           {(current) => (
             <>
               <div class="flex flex-col items-center gap-3 px-6 pt-2 pb-4">
