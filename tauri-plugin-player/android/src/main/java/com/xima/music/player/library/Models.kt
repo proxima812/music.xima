@@ -3,7 +3,6 @@ package com.xima.music.player.library
 import android.database.Cursor
 import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
-import java.nio.charset.Charset
 import org.json.JSONObject
 
 /**
@@ -97,37 +96,50 @@ internal fun normalizeText(value: String?): String? {
 private const val REPLACEMENT_CHAR = '\uFFFD'
 
 /**
- * Кодировка, в которой Android прочитал байты тега. Именно windows-1252, а не
- * ISO-8859-1: в реальной строке из MediaStore встречается `Ÿ` (U+0178), которого
- * в Latin-1 нет вовсе — байт `0x9F` даёт его только по таблице CP1252.
+ * Символы, которые однобайтовый декодер мог выдать за пределами Latin-1.
+ * Диапазон `0x80..0x9F` читается по-разному: как управляющие символы по
+ * ISO-8859-1 и как типографика по windows-1252. Таблица покрывает второй
+ * случай, коды до `0xFF` берутся напрямую — поэтому обе кодировки чинятся
+ * одним проходом.
  */
-private val TAG_CHARSET: Charset =
-    runCatching { Charset.forName("windows-1252") }.getOrDefault(Charsets.ISO_8859_1)
+private val CP1252_EXTRAS: Map<Char, Int> = mapOf(
+    '\u20AC' to 0x80, '\u201A' to 0x82, '\u0192' to 0x83,
+    '\u201E' to 0x84, '\u2026' to 0x85, '\u2020' to 0x86,
+    '\u2021' to 0x87, '\u02C6' to 0x88, '\u2030' to 0x89,
+    '\u0160' to 0x8A, '\u2039' to 0x8B, '\u0152' to 0x8C,
+    '\u017D' to 0x8E, '\u2018' to 0x91, '\u2019' to 0x92,
+    '\u201C' to 0x93, '\u201D' to 0x94, '\u2022' to 0x95,
+    '\u2013' to 0x96, '\u2014' to 0x97, '\u02DC' to 0x98,
+    '\u2122' to 0x99, '\u0161' to 0x9A, '\u203A' to 0x9B,
+    '\u0153' to 0x9C, '\u017E' to 0x9E, '\u0178' to 0x9F,
+)
 
 /**
  * Тег, в котором UTF-8 записан под видом однобайтовой кодировки и прочитан
  * буквально. Так устроена половина старых ID3v2: кадр объявлен латиницей, а
- * внутри лежат байты UTF-8. Сканер Android декодирует их как есть, и «Повод»
- * приезжает строкой `Â«ÐŸÐ¾Ð²Ð¾Ð´Â»`.
+ * внутри лежат байты UTF-8. Сканер Android декодирует их как есть, и «Довод»
+ * приезжает строкой из `U+00C2 U+00AB U+00D0 U+0094 …`.
  *
- * Чиним только наверняка, две проверки подряд:
+ * Собираем исходные байты обратно и пробуем прочитать их как UTF-8. Решает
+ * одна проверка, зато строгая: **последовательность должна быть валидной**.
+ * Честная латиница вроде `Göransson` даёт байт `0xF6` перед обычной буквой,
+ * продолжения за ним нет, декодер вернёт `U+FFFD` — и строку мы не тронем.
+ * Текст, который уже прочитан правильно, отсекается раньше: настоящая
+ * кириллица лежит выше `0xFF` и в таблицу не попадает.
  *
- * 1. Обратное кодирование ничего не потеряло. Кодировщик подменяет то, чего в
- *    таблице нет, на `?` — если строка после круга отличается от исходной,
- *    значит она пришла не из этой кодировки, и трогать её нельзя.
- * 2. Получившиеся байты — **валидный** UTF-8. Это главное: честная латиница
- *    вроде `Göransson` даёт байт `0xF6` перед обычной буквой, продолжения
- *    последовательности за ним нет, декодер вернёт `U+FFFD`, и строка
- *    останется как была.
- *
- * Проверено на живых данных: `Â«ÐŸÐ¾Ð²Ð¾Ð´Â»` → `«Повод»`, а `Göransson`,
- * `Café del Mar`, `Björk`, `Motörhead` и нормальная кириллица не меняются.
+ * Проверено на данных с устройства: строка выше превращается в `«Довод»`, а
+ * `Göransson`, `Café del Mar`, `Björk`, `Motörhead`, `Beyoncé`, `Brand™` и
+ * нормальная кириллица остаются как были.
  */
 private fun repairMojibake(value: String): String {
     if (value.all { it.code < 0x80 }) return value
 
-    val bytes = value.toByteArray(TAG_CHARSET)
-    if (String(bytes, TAG_CHARSET) != value) return value
+    val bytes = ByteArray(value.length)
+    for (index in value.indices) {
+        val char = value[index]
+        val byte = if (char.code <= 0xFF) char.code else CP1252_EXTRAS[char] ?: return value
+        bytes[index] = byte.toByte()
+    }
 
     val decoded = String(bytes, Charsets.UTF_8)
     return if (decoded.contains(REPLACEMENT_CHAR)) value else decoded
