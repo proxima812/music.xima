@@ -3,6 +3,7 @@ package com.xima.music.player.library
 import android.database.Cursor
 import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
+import java.nio.charset.Charset
 import org.json.JSONObject
 
 /**
@@ -90,7 +91,46 @@ internal fun Cursor.intOrNull(index: Int): Int? =
 internal fun normalizeText(value: String?): String? {
     val trimmed = value?.trim() ?: return null
     if (trimmed.isEmpty() || trimmed.equals(UNKNOWN_TAG, ignoreCase = true)) return null
-    return trimmed
+    return repairMojibake(trimmed)
+}
+
+private const val REPLACEMENT_CHAR = '\uFFFD'
+
+/**
+ * Кодировка, в которой Android прочитал байты тега. Именно windows-1252, а не
+ * ISO-8859-1: в реальной строке из MediaStore встречается `Ÿ` (U+0178), которого
+ * в Latin-1 нет вовсе — байт `0x9F` даёт его только по таблице CP1252.
+ */
+private val TAG_CHARSET: Charset =
+    runCatching { Charset.forName("windows-1252") }.getOrDefault(Charsets.ISO_8859_1)
+
+/**
+ * Тег, в котором UTF-8 записан под видом однобайтовой кодировки и прочитан
+ * буквально. Так устроена половина старых ID3v2: кадр объявлен латиницей, а
+ * внутри лежат байты UTF-8. Сканер Android декодирует их как есть, и «Повод»
+ * приезжает строкой `Â«ÐŸÐ¾Ð²Ð¾Ð´Â»`.
+ *
+ * Чиним только наверняка, две проверки подряд:
+ *
+ * 1. Обратное кодирование ничего не потеряло. Кодировщик подменяет то, чего в
+ *    таблице нет, на `?` — если строка после круга отличается от исходной,
+ *    значит она пришла не из этой кодировки, и трогать её нельзя.
+ * 2. Получившиеся байты — **валидный** UTF-8. Это главное: честная латиница
+ *    вроде `Göransson` даёт байт `0xF6` перед обычной буквой, продолжения
+ *    последовательности за ним нет, декодер вернёт `U+FFFD`, и строка
+ *    останется как была.
+ *
+ * Проверено на живых данных: `Â«ÐŸÐ¾Ð²Ð¾Ð´Â»` → `«Повод»`, а `Göransson`,
+ * `Café del Mar`, `Björk`, `Motörhead` и нормальная кириллица не меняются.
+ */
+private fun repairMojibake(value: String): String {
+    if (value.all { it.code < 0x80 }) return value
+
+    val bytes = value.toByteArray(TAG_CHARSET)
+    if (String(bytes, TAG_CHARSET) != value) return value
+
+    val decoded = String(bytes, Charsets.UTF_8)
+    return if (decoded.contains(REPLACEMENT_CHAR)) value else decoded
 }
 
 /**

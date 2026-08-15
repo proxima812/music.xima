@@ -134,7 +134,14 @@ export function FullPlayer() {
   )
 
   createEffect(() => {
-    if (!player.isFullOpen) resetDeck()
+    if (player.isFullOpen) return
+    resetDeck()
+    /*
+      Очередь — часть плеера, а не отдельный экран: закрылся плеер — закрывается
+      и она. Иначе лист очереди переживал закрытие, и следующий запуск трека из
+      библиотеки открывал плеер сразу с ним поверх обложки.
+    */
+    setQueueOpen(false)
   })
 
   onMount(() => {

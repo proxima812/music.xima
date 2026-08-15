@@ -47,11 +47,14 @@ export function QueueSheet(props: QueueSheetProps) {
     })
   }
 
+  /**
+   * Выбор трека — это «покажи мне его»: очередь закрывается всегда, а не только
+   * когда ткнули в уже играющий. Иначе лист остаётся висеть поверх плеера,
+   * хотя выбор уже сделан, и обложку выбранного трека не видно.
+   */
   const skipTo = (index: number): void => {
-    if (index === activeIndex()) {
-      props.onOpenChange(false)
-      return
-    }
+    props.onOpenChange(false)
+    if (index === activeIndex()) return
     run('Не удалось переключить трек', () => playerSkipTo(index))
   }
 
