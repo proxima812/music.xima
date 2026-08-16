@@ -13,7 +13,7 @@ WebView на Tauri 2 + SolidJS. В вебе нет ни одного `<audio>`: 
 Файл один на все архитектуры (arm64, arm32, x86, x86_64):
 
 ```bash
-adb install xima.music-1.0.1.apk
+adb install xima.music-1.1.0.apk
 ```
 
 Либо перенесите его на телефон и откройте в проводнике — Android спросит
