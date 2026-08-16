@@ -71,6 +71,16 @@ npm run android:build -- --debug --apk --target aarch64
 
 APK появится в `src-tauri/gen/android/app/build/outputs/apk/universal/debug/`.
 
+Иконка приложения собирается из `xima.music.png` в корне — это единственный
+исходник, всё остальное производное:
+
+```bash
+./node_modules/.bin/tauri icon xima.music.png
+```
+
+После этого фон адаптивной иконки в `gen/android` придётся вернуть руками:
+шаблон Tauri кладёт туда белый, а нужен `#141136` (PROPOSALS.md, П2).
+
 ### Релиз
 
 ```bash
