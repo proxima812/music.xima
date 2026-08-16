@@ -211,6 +211,10 @@ export const playerSetVolume = (volume: number): Promise<void> =>
 
 export const playerSetSpeed = (speed: number): Promise<void> => call('player_set_speed', { speed })
 
+/** Длительность плавного перехода между треками; 0 — резкий стык. */
+export const playerSetCrossfade = (durationMs: number): Promise<void> =>
+  call('player_set_crossfade', { durationMs })
+
 export const playerAddNext = (trackIds: number[]): Promise<void> =>
   call('player_add_next', { trackIds })
 

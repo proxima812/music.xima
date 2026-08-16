@@ -99,6 +99,11 @@ pub(crate) async fn set_speed<R: Runtime>(app: AppHandle<R>, speed: f32) -> Resu
 }
 
 #[tauri::command]
+pub(crate) async fn set_crossfade<R: Runtime>(app: AppHandle<R>, duration_ms: i64) -> Result<()> {
+    app.player().set_crossfade(duration_ms)
+}
+
+#[tauri::command]
 pub(crate) async fn add_next<R: Runtime>(app: AppHandle<R>, items: Vec<QueueItem>) -> Result<()> {
     app.player().add_next(items)
 }

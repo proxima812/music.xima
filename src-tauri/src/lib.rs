@@ -113,6 +113,7 @@ pub fn run() {
             commands::player::player_set_repeat,
             commands::player::player_set_volume,
             commands::player::player_set_speed,
+            commands::player::player_set_crossfade,
             commands::player::player_add_next,
             commands::player::player_add_to_queue,
             commands::player::player_remove_queue_item,

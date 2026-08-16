@@ -2,7 +2,8 @@ import { useNavigate } from '@solidjs/router'
 import { ChevronLeft, ChevronRight } from 'lucide-solid'
 
 import { useSettings } from '@/app/providers'
-import { playerSetShuffle, playerSetVolume } from '@/shared/ipc'
+import { playerSetCrossfade, playerSetShuffle, playerSetVolume } from '@/shared/ipc'
+import { MAX_CROSSFADE_MS } from '@/shared/settings'
 import { IconButton, Screen, SectionHeader, Slider, Switch, TopBar } from '@/shared/ui'
 import { LibrarySection } from './LibrarySection'
 
@@ -20,6 +21,23 @@ export function SettingsScreen() {
   const pushVolume = (percent: number): void => {
     void playerSetVolume(Math.min(1, Math.max(0, percent / 100))).catch((error: unknown) => {
       console.error('[settings] громкость не доехала до плеера', error)
+    })
+  }
+
+  const crossfadeSeconds = (): number => settings.value().crossfadeMs / 1000
+
+  const crossfadeLabel = (): string => {
+    const seconds = crossfadeSeconds()
+    return seconds === 0 ? 'Выкл.' : `${seconds.toFixed(1)} с`
+  }
+
+  const setCrossfade = (seconds: number): void => {
+    settings.set('crossfadeMs', Math.round(seconds * 1000))
+  }
+
+  const pushCrossfade = (seconds: number): void => {
+    void playerSetCrossfade(Math.round(seconds * 1000)).catch((error: unknown) => {
+      console.error('[settings] плавный переход не доехал до плеера', error)
     })
   }
 
@@ -95,6 +113,23 @@ export function SettingsScreen() {
               onChange={setVolume}
               onChangeEnd={pushVolume}
             />
+
+            <div class="flex flex-col gap-1">
+              <Slider
+                label="Плавный переход"
+                valueLabel={crossfadeLabel()}
+                ariaLabel="Плавный переход между треками"
+                value={crossfadeSeconds()}
+                min={0}
+                max={MAX_CROSSFADE_MS / 1000}
+                step={0.5}
+                onChange={setCrossfade}
+                onChangeEnd={pushCrossfade}
+              />
+              <p class="text-xs text-muted">
+                Конец трека плавно затихает, следующий так же плавно нарастает
+              </p>
+            </div>
           </div>
         </section>
       </div>

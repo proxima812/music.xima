@@ -88,6 +88,10 @@ impl<R: Runtime> Player<R> {
         Err(Error::Unsupported)
     }
 
+    pub fn set_crossfade(&self, _duration_ms: i64) -> Result<()> {
+        Err(Error::Unsupported)
+    }
+
     pub fn add_next(&self, _items: Vec<QueueItem>) -> Result<()> {
         Err(Error::Unsupported)
     }

@@ -108,6 +108,12 @@ impl<R: Runtime> Player<R> {
             .run_mobile_plugin::<()>("setSpeed", SpeedArgs { speed })?)
     }
 
+    pub fn set_crossfade(&self, duration_ms: i64) -> Result<()> {
+        Ok(self
+            .0
+            .run_mobile_plugin::<()>("setCrossfade", CrossfadeArgs { duration_ms })?)
+    }
+
     pub fn add_next(&self, items: Vec<QueueItem>) -> Result<()> {
         Ok(self
             .0
@@ -317,6 +323,12 @@ struct VolumeArgs {
 #[serde(rename_all = "camelCase")]
 struct SpeedArgs {
     speed: f32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CrossfadeArgs {
+    duration_ms: i64,
 }
 
 #[derive(Serialize)]

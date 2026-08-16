@@ -632,6 +632,7 @@ pub struct SmartPlaylistDraft {
 | `player_set_repeat` | `mode: RepeatMode` | `()` |
 | `player_set_volume` | `volume: f32` | `()` |
 | `player_set_speed` | `speed: f32` | `()` |
+| `player_set_crossfade` | `durationMs: i64` | `()` |
 | `player_add_next` | `trackIds: Vec<i64>` | `()` |
 | `player_add_to_queue` | `trackIds: Vec<i64>` | `()` |
 | `player_remove_queue_item` | `index: i32` | `()` |
@@ -681,6 +682,7 @@ impl<R: Runtime> Player<R> {
     pub fn set_repeat(&self, mode: RepeatMode) -> crate::Result<()>;
     pub fn set_volume(&self, volume: f32) -> crate::Result<()>;
     pub fn set_speed(&self, speed: f32) -> crate::Result<()>;
+    pub fn set_crossfade(&self, duration_ms: i64) -> crate::Result<()>;
     pub fn add_next(&self, items: Vec<QueueItem>) -> crate::Result<()>;
     pub fn add_to_queue(&self, items: Vec<QueueItem>) -> crate::Result<()>;
     pub fn remove_queue_item(&self, index: i32) -> crate::Result<()>;
@@ -725,7 +727,7 @@ pub struct ScanBatch { pub tracks: Vec<ScannedTrack>, pub complete: bool, pub ne
 
 ```
 getState, setQueue, play, pause, toggle, stop, next, previous,
-seek, skipTo, setShuffle, setRepeat, setVolume, setSpeed,
+seek, skipTo, setShuffle, setRepeat, setVolume, setSpeed, setCrossfade,
 addNext, addToQueue, removeQueueItem, moveQueueItem, clearQueue,
 scanMediaStore, scanTree, pickFolder, persistedRoots, releaseRoot, extractArtwork
 ```
@@ -789,11 +791,15 @@ type AppSettings = {
   rememberQueue: boolean
   lastQueue: { trackIds: number[]; index: number; positionMs: number } | null
   scanRoots: string[]
-  crossfadeMs: number
+  crossfadeMs: number       // 0..12000, плавный переход между треками
 }
 ```
 
 Дефолты — `src/shared/settings/defaults.ts`.
+
+`repeat`, `shuffle`, `volume` и `crossfadeMs` — настройки, а не состояние плеера:
+нативная сессия переживает не каждый перезапуск, поэтому на старте
+`PlayerProvider` досылает их командами `player_set_*`.
 
 Темы и размера сетки в настройках нет: приложение всегда тёмное (`class="dark"`
 жёстко в `index.html`), сетка одна на всё приложение.

@@ -45,6 +45,20 @@ internal class PlaybackController(
     private var queueIds: List<Long> = emptyList()
     private var ticking = false
 
+    /**
+     * Плавный переход между треками (`crossfadeMs` из настроек, 0 — выключено).
+     *
+     * Наложения звука нет: у сессии один ExoPlayer. Хвост трека уходит в тишину,
+     * следующий из неё же и поднимается — стык перестаёт быть резким.
+     */
+    private var crossfadeMs = 0L
+
+    /** Громкость, которую задал пользователь. Фейд множится на неё, а не затирает. */
+    private var masterVolume = 1f
+    private var fadeGain = 1f
+    private var fadingOut = false
+    private var fadeStep: Runnable? = null
+
     /** Сколько реально отзвучало у текущего трека — по «стенным» часам, а не по позиции. */
     private var listenedTrackId: Long? = null
     private var listenedMs = 0L
@@ -61,6 +75,7 @@ internal class PlaybackController(
                 return
             }
             publishState(player)
+            maybeFadeOut(player)
             if (player.isPlaying) {
                 main.postDelayed(this, TICK_MS)
             } else {
@@ -84,6 +99,7 @@ internal class PlaybackController(
 
     fun release() = onMain {
         main.removeCallbacks(tick)
+        cancelRamp()
         ticking = false
         pending.clear()
         controller?.removeListener(playerEvents)
@@ -115,6 +131,7 @@ internal class PlaybackController(
 
     fun setQueue(items: List<QueueItem>, startIndex: Int, autoplay: Boolean) = withPlayer { player ->
         flushListening()
+        resetFade()
         if (items.isEmpty()) {
             player.clearMediaItems()
             player.stop()
@@ -133,6 +150,7 @@ internal class PlaybackController(
         if (player.playbackState == Player.STATE_ENDED && player.mediaItemCount > 0) {
             player.seekTo(player.currentMediaItemIndex, 0L)
         }
+        resetFade()
         player.play()
     }
 
@@ -145,24 +163,36 @@ internal class PlaybackController(
             if (player.playbackState == Player.STATE_IDLE) {
                 player.prepare()
             }
+            resetFade()
             player.play()
         }
     }
 
     fun stop() = withPlayer { player ->
         flushListening()
+        resetFade()
         player.stop()
         player.seekTo(0L)
     }
 
-    fun next() = withPlayer { player -> player.seekToNext() }
+    fun next() = withPlayer { player ->
+        resetFade()
+        player.seekToNext()
+    }
 
-    fun previous() = withPlayer { player -> player.seekToPrevious() }
+    fun previous() = withPlayer { player ->
+        resetFade()
+        player.seekToPrevious()
+    }
 
-    fun seek(positionMs: Long) = withPlayer { player -> player.seekTo(positionMs.coerceAtLeast(0L)) }
+    fun seek(positionMs: Long) = withPlayer { player ->
+        resetFade()
+        player.seekTo(positionMs.coerceAtLeast(0L))
+    }
 
     fun skipTo(index: Int) = withPlayer { player ->
         if (index in 0 until player.mediaItemCount) {
+            resetFade()
             player.seekTo(index, 0L)
         }
     }
@@ -177,7 +207,16 @@ internal class PlaybackController(
         }
     }
 
-    fun setVolume(volume: Float) = withPlayer { player -> player.volume = volume.coerceIn(0f, 1f) }
+    fun setVolume(volume: Float) = withPlayer { _ ->
+        masterVolume = volume.coerceIn(0f, 1f)
+        applyGain()
+    }
+
+    /** Длительность плавного перехода; 0 выключает его и возвращает громкость на место. */
+    fun setCrossfade(durationMs: Long) = withPlayer { _ ->
+        crossfadeMs = durationMs.coerceIn(0L, MAX_CROSSFADE_MS)
+        if (crossfadeMs == 0L) resetFade()
+    }
 
     fun setSpeed(speed: Float) = withPlayer { player ->
         player.setPlaybackSpeed(speed.coerceIn(MIN_SPEED, MAX_SPEED))
@@ -233,6 +272,10 @@ internal class PlaybackController(
 
         controller = player
         player.addListener(playerEvents)
+        // Сессия могла пережить перезапуск WebView — забираем её громкость как master.
+        masterVolume = player.volume
+        fadeGain = 1f
+        fadingOut = false
         listenedTrackId = QueueMapper.trackIdOf(player.currentMediaItem)
         listenedMs = 0L
         listeningSince = if (player.isPlaying) SystemClock.elapsedRealtime() else null
@@ -293,7 +336,8 @@ internal class PlaybackController(
             queueLength = count,
             shuffle = player.shuffleModeEnabled,
             repeat = repeatOf(player.repeatMode),
-            volume = player.volume,
+            // Во время фейда реальная громкость плеера ниже — наружу отдаём выбранную.
+            volume = masterVolume,
             speed = player.playbackParameters.speed,
         )
     }
@@ -327,6 +371,101 @@ internal class PlaybackController(
         }
     }
 
+    // ── Плавный переход ─────────────────────────────────────────────────────
+
+    /**
+     * Хвост трека уводится в тишину за `crossfadeMs` до конца. Считается по тикеру
+     * (500 мс) — этого хватает, чтобы начать двухсекундный спуск вовремя.
+     *
+     * Не гасим: слишком короткий трек (меньше двух окон перехода) и «повтор одного»,
+     * где стыка между разными треками просто нет.
+     */
+    private fun maybeFadeOut(player: Player) {
+        val fade = crossfadeMs
+        if (fade <= 0L || !player.isPlaying) return
+        if (player.repeatMode == Player.REPEAT_MODE_ONE) return
+
+        val duration = player.duration
+        if (duration == C.TIME_UNSET || duration <= 0L) return
+
+        val remaining = duration - player.currentPosition
+        if (remaining <= 0L || remaining > fade) {
+            // Перемотали из хвоста назад — возвращаем громкость.
+            if (fadingOut && remaining > fade) resetFade()
+            return
+        }
+
+        if (fadingOut || duration < fade * 2) return
+        fadingOut = true
+        // Спуск идёт по часам, а музыка — со своей скоростью: на 2× хвост
+        // отзвучит вдвое быстрее, и затухание должно успеть за ним.
+        val speed = player.playbackParameters.speed
+        val wallClock = if (speed > 0f) (remaining / speed).toLong() else remaining
+        rampTo(0f, wallClock)
+    }
+
+    /**
+     * Новый трек начинается с тишины и поднимается до выбранной громкости.
+     *
+     * Ручное переключение поднимается быстро: нажали «дальше» — звук должен
+     * появиться сразу, а не через пару секунд. Плавно нарастает только тот трек,
+     * что пришёл сам, следом за затухшим хвостом предыдущего.
+     */
+    private fun fadeIn(durationMs: Long) {
+        if (crossfadeMs <= 0L || durationMs <= 0L) {
+            resetFade()
+            return
+        }
+        cancelRamp()
+        fadingOut = false
+        fadeGain = 0f
+        applyGain()
+        rampTo(1f, durationMs)
+    }
+
+    private fun resetFade() {
+        cancelRamp()
+        fadingOut = false
+        fadeGain = 1f
+        applyGain()
+    }
+
+    private fun rampTo(target: Float, durationMs: Long) {
+        cancelRamp()
+        if (durationMs <= 0L) {
+            fadeGain = target
+            applyGain()
+            return
+        }
+
+        val from = fadeGain
+        val startedAt = SystemClock.elapsedRealtime()
+        val step = object : Runnable {
+            override fun run() {
+                val elapsed = SystemClock.elapsedRealtime() - startedAt
+                val progress = (elapsed.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                fadeGain = from + (target - from) * progress
+                applyGain()
+                if (progress < 1f) {
+                    main.postDelayed(this, FADE_STEP_MS)
+                } else {
+                    fadeStep = null
+                }
+            }
+        }
+        fadeStep = step
+        main.post(step)
+    }
+
+    private fun cancelRamp() {
+        fadeStep?.let { main.removeCallbacks(it) }
+        fadeStep = null
+    }
+
+    private fun applyGain() {
+        controller?.volume = (masterVolume * fadeGain).coerceIn(0f, 1f)
+    }
+
     private fun accumulate(now: Long) {
         val since = listeningSince ?: return
         if (now > since) {
@@ -356,6 +495,11 @@ internal class PlaybackController(
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             val player = controller ?: return
             flushListening()
+            when (reason) {
+                Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT -> resetFade()
+                Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> fadeIn(crossfadeMs)
+                else -> fadeIn(minOf(crossfadeMs, MANUAL_FADE_IN_MS))
+            }
             listenedTrackId = QueueMapper.trackIdOf(mediaItem)
             listeningSince = if (player.isPlaying) SystemClock.elapsedRealtime() else null
             listener.onTrackChanged(
@@ -372,6 +516,8 @@ internal class PlaybackController(
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
                 flushListening()
+                // Очередь кончилась на тишине — следующий запуск не должен быть немым.
+                resetFade()
             }
         }
 
@@ -382,6 +528,9 @@ internal class PlaybackController(
             } else {
                 accumulate(now)
                 listeningSince = null
+                // Пауза посреди затухания: спуск идёт по часам, а не по позиции,
+                // поэтому его надо снять — иначе трек вернётся из паузы немым.
+                if (fadingOut) resetFade()
             }
             controller?.let { syncTicker(it) }
         }
@@ -400,6 +549,11 @@ internal class PlaybackController(
         const val SERVICE_CLASS = "com.xima.music.player.PlaybackService"
 
         const val TICK_MS = 500L
+        /** Шаг громкости при фейде: 50 мс — ухо не слышит ступенек. */
+        const val FADE_STEP_MS = 50L
+        /** Нарастание после ручного переключения: снимает щелчок, но не тянет. */
+        const val MANUAL_FADE_IN_MS = 300L
+        const val MAX_CROSSFADE_MS = 12_000L
         const val MAX_PENDING = 64
         const val MIN_SPEED = 0.25f
         const val MAX_SPEED = 4f

@@ -404,6 +404,10 @@ mod tests {
             Ok(())
         }
 
+        async fn set_crossfade(&self, _duration_ms: i64) -> CoreResult<()> {
+            Ok(())
+        }
+
         async fn remove_queue_item(&self, index: i32) -> CoreResult<()> {
             self.calls.lock().expect("lock").push("queue_remove".into());
             let mut queue = self.queue.lock().expect("lock");

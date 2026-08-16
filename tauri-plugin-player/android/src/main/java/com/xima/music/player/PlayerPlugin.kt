@@ -186,6 +186,15 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @Command
+    fun setCrossfade(invoke: Invoke) {
+        val args = argsOf(invoke) ?: return
+        val durationMs = args.longOrNull("durationMs")
+            ?: return invoke.reject("setCrossfade: durationMs is required")
+        controller.setCrossfade(durationMs)
+        invoke.resolve()
+    }
+
+    @Command
     fun setSpeed(invoke: Invoke) {
         val args = argsOf(invoke) ?: return
         val speed = args.floatOrNull("speed") ?: return invoke.reject("setSpeed: speed is required")

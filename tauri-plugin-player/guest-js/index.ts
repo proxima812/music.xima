@@ -117,6 +117,9 @@ export const setVolume = (volume: number): Promise<void> =>
 export const setSpeed = (speed: number): Promise<void> =>
   invoke<void>(`${PREFIX}set_speed`, { speed })
 
+export const setCrossfade = (durationMs: number): Promise<void> =>
+  invoke<void>(`${PREFIX}set_crossfade`, { durationMs })
+
 // Очередь
 
 export const addNext = (items: QueueItem[]): Promise<void> =>

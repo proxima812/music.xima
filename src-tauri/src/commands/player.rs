@@ -93,6 +93,11 @@ pub async fn player_set_speed(state: State<'_, AppState>, speed: f32) -> CoreRes
 }
 
 #[tauri::command]
+pub async fn player_set_crossfade(state: State<'_, AppState>, duration_ms: i64) -> CoreResult<()> {
+    state.player.set_crossfade(duration_ms).await
+}
+
+#[tauri::command]
 pub async fn player_add_next(state: State<'_, AppState>, track_ids: Vec<i64>) -> CoreResult<()> {
     state.player.add_next(&track_ids).await
 }

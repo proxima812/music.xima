@@ -19,6 +19,7 @@ const COMMANDS: &[&str] = &[
     "set_repeat",
     "set_volume",
     "set_speed",
+    "set_crossfade",
     // queue
     "add_next",
     "add_to_queue",

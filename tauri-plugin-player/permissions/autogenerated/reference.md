@@ -22,6 +22,7 @@ command from `build.rs` (CONTRACTS §7).
 - `allow-set-repeat`
 - `allow-set-volume`
 - `allow-set-speed`
+- `allow-set-crossfade`
 - `allow-add-next`
 - `allow-add-to-queue`
 - `allow-remove-queue-item`
@@ -535,6 +536,32 @@ Enables the seek command without any pre-configured scope.
 <td>
 
 Denies the seek command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`player:allow-set-crossfade`
+
+</td>
+<td>
+
+Enables the set_crossfade command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`player:deny-set-crossfade`
+
+</td>
+<td>
+
+Denies the set_crossfade command without any pre-configured scope.
 
 </td>
 </tr>

@@ -252,6 +252,11 @@ impl<R: Runtime> PlayerPort for AndroidPlayerAdapter<R> {
         Ok(())
     }
 
+    async fn set_crossfade(&self, duration_ms: i64) -> CoreResult<()> {
+        self.plugin()?.set_crossfade(duration_ms)?;
+        Ok(())
+    }
+
     async fn remove_queue_item(&self, index: i32) -> CoreResult<()> {
         self.plugin()?.remove_queue_item(index)?;
 

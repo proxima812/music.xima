@@ -24,6 +24,7 @@ permissions = [
   "allow-set-repeat",
   "allow-set-volume",
   "allow-set-speed",
+  "allow-set-crossfade",
   # queue
   "allow-add-next",
   "allow-add-to-queue",

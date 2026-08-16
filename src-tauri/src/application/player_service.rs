@@ -20,6 +20,9 @@ pub const MIN_VOLUME: f32 = 0.0;
 pub const MAX_VOLUME: f32 = 1.0;
 pub const MIN_SPEED: f32 = 0.25;
 pub const MAX_SPEED: f32 = 4.0;
+/// Upper bound of the smooth track-to-track transition, mirrored by
+/// `MAX_CROSSFADE_MS` in the frontend settings.
+pub const MAX_CROSSFADE_MS: i64 = 12_000;
 
 /// The native player as the application layer sees it: CONTRACTS §7.1 with the
 /// plugin types replaced by domain types, plus `queue_ids`, because the plugin
@@ -49,6 +52,8 @@ pub trait PlayerPort: Send + Sync {
     async fn set_repeat(&self, mode: RepeatMode) -> CoreResult<()>;
     async fn set_volume(&self, volume: f32) -> CoreResult<()>;
     async fn set_speed(&self, speed: f32) -> CoreResult<()>;
+    /// Length of the fade out / fade in around a track change; `0` disables it.
+    async fn set_crossfade(&self, duration_ms: i64) -> CoreResult<()>;
     async fn remove_queue_item(&self, index: i32) -> CoreResult<()>;
     async fn move_queue_item(&self, from: i32, to: i32) -> CoreResult<()>;
     async fn clear_queue(&self) -> CoreResult<()>;
@@ -181,6 +186,13 @@ impl PlayerService {
     pub async fn set_speed(&self, speed: f32) -> CoreResult<()> {
         let speed = clamped("speed", speed, MIN_SPEED, MAX_SPEED)?;
         self.player.set_speed(speed).await
+    }
+
+    pub async fn set_crossfade(&self, duration_ms: i64) -> CoreResult<()> {
+        validated_index("durationMs", duration_ms)?;
+        self.player
+            .set_crossfade(duration_ms.min(MAX_CROSSFADE_MS))
+            .await
     }
 
     /// Inserts right after the current item.
@@ -342,7 +354,7 @@ fn slot(index: i32, len: usize) -> Option<usize> {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use super::{PlayerPort, PlayerService, MAX_SPEED, MAX_VOLUME, MIN_SPEED};
+    use super::{PlayerPort, PlayerService, MAX_CROSSFADE_MS, MAX_SPEED, MAX_VOLUME, MIN_SPEED};
     use crate::application::testing::track;
     use crate::domain::{
         LibraryStats, Page, PlaybackState, RepeatMode, ScannedTrack, Track, TrackQuery,
@@ -360,6 +372,7 @@ mod tests {
         SkipTo(i32),
         SetVolume(f32),
         SetSpeed(f32),
+        SetCrossfade(i64),
         SetRepeat(RepeatMode),
         Remove(i32),
         Move(i32, i32),
@@ -474,6 +487,11 @@ mod tests {
 
         async fn set_speed(&self, speed: f32) -> CoreResult<()> {
             self.record(Call::SetSpeed(speed));
+            Ok(())
+        }
+
+        async fn set_crossfade(&self, duration_ms: i64) -> CoreResult<()> {
+            self.record(Call::SetCrossfade(duration_ms));
             Ok(())
         }
 
@@ -904,6 +922,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn crossfade_is_capped_and_rejects_negative_values() {
+        let (service, _, player) = service();
+
+        service.set_crossfade(0).await.expect("off");
+        service.set_crossfade(2_000).await.expect("two seconds");
+        service.set_crossfade(60_000).await.expect("capped");
+
+        assert_eq!(
+            service
+                .set_crossfade(-1)
+                .await
+                .expect_err("negative")
+                .code(),
+            "INVALID_INPUT"
+        );
+
+        assert_eq!(
+            player.calls(),
+            vec![
+                Call::SetCrossfade(0),
+                Call::SetCrossfade(2_000),
+                Call::SetCrossfade(MAX_CROSSFADE_MS),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn a_failing_player_leaves_the_mirror_alone() {
         struct BrokenPlayer;
 
@@ -979,6 +1024,10 @@ mod tests {
             }
 
             async fn set_speed(&self, _speed: f32) -> CoreResult<()> {
+                Ok(())
+            }
+
+            async fn set_crossfade(&self, _duration_ms: i64) -> CoreResult<()> {
                 Ok(())
             }
 

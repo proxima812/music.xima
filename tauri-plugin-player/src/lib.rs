@@ -56,6 +56,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::set_repeat,
             commands::set_volume,
             commands::set_speed,
+            commands::set_crossfade,
             commands::add_next,
             commands::add_to_queue,
             commands::remove_queue_item,

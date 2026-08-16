@@ -523,6 +523,18 @@
           "markdownDescription": "Denies the seek command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_crossfade command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-crossfade",
+          "markdownDescription": "Enables the set_crossfade command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_crossfade command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-crossfade",
+          "markdownDescription": "Denies the set_crossfade command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_queue command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-queue",
@@ -631,10 +643,10 @@
           "markdownDescription": "Denies the track_file_exists command without any pre-configured scope."
         },
         {
-          "description": "Full access to the native player: playback, queue editing, library scanning and\nthe storage roots the user picked. The plugin is private to music.xima and the\nwhole surface is needed by the app shell, so the default set allows every\ncommand from `build.rs` (CONTRACTS §7).\n\n#### This default permission set includes:\n\n- `allow-get-state`\n- `allow-get-queue-ids`\n- `allow-set-queue`\n- `allow-play`\n- `allow-pause`\n- `allow-toggle`\n- `allow-stop`\n- `allow-next`\n- `allow-previous`\n- `allow-seek`\n- `allow-skip-to`\n- `allow-set-shuffle`\n- `allow-set-repeat`\n- `allow-set-volume`\n- `allow-set-speed`\n- `allow-add-next`\n- `allow-add-to-queue`\n- `allow-remove-queue-item`\n- `allow-move-queue-item`\n- `allow-clear-queue`\n- `allow-scan-media-store`\n- `allow-scan-tree`\n- `allow-pick-folder`\n- `allow-persisted-roots`\n- `allow-release-root`\n- `allow-extract-artwork`\n- `allow-delete-track-file`\n- `allow-track-file-exists`",
+          "description": "Full access to the native player: playback, queue editing, library scanning and\nthe storage roots the user picked. The plugin is private to music.xima and the\nwhole surface is needed by the app shell, so the default set allows every\ncommand from `build.rs` (CONTRACTS §7).\n\n#### This default permission set includes:\n\n- `allow-get-state`\n- `allow-get-queue-ids`\n- `allow-set-queue`\n- `allow-play`\n- `allow-pause`\n- `allow-toggle`\n- `allow-stop`\n- `allow-next`\n- `allow-previous`\n- `allow-seek`\n- `allow-skip-to`\n- `allow-set-shuffle`\n- `allow-set-repeat`\n- `allow-set-volume`\n- `allow-set-speed`\n- `allow-set-crossfade`\n- `allow-add-next`\n- `allow-add-to-queue`\n- `allow-remove-queue-item`\n- `allow-move-queue-item`\n- `allow-clear-queue`\n- `allow-scan-media-store`\n- `allow-scan-tree`\n- `allow-pick-folder`\n- `allow-persisted-roots`\n- `allow-release-root`\n- `allow-extract-artwork`\n- `allow-delete-track-file`\n- `allow-track-file-exists`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Full access to the native player: playback, queue editing, library scanning and\nthe storage roots the user picked. The plugin is private to music.xima and the\nwhole surface is needed by the app shell, so the default set allows every\ncommand from `build.rs` (CONTRACTS §7).\n\n#### This default permission set includes:\n\n- `allow-get-state`\n- `allow-get-queue-ids`\n- `allow-set-queue`\n- `allow-play`\n- `allow-pause`\n- `allow-toggle`\n- `allow-stop`\n- `allow-next`\n- `allow-previous`\n- `allow-seek`\n- `allow-skip-to`\n- `allow-set-shuffle`\n- `allow-set-repeat`\n- `allow-set-volume`\n- `allow-set-speed`\n- `allow-add-next`\n- `allow-add-to-queue`\n- `allow-remove-queue-item`\n- `allow-move-queue-item`\n- `allow-clear-queue`\n- `allow-scan-media-store`\n- `allow-scan-tree`\n- `allow-pick-folder`\n- `allow-persisted-roots`\n- `allow-release-root`\n- `allow-extract-artwork`\n- `allow-delete-track-file`\n- `allow-track-file-exists`"
+          "markdownDescription": "Full access to the native player: playback, queue editing, library scanning and\nthe storage roots the user picked. The plugin is private to music.xima and the\nwhole surface is needed by the app shell, so the default set allows every\ncommand from `build.rs` (CONTRACTS §7).\n\n#### This default permission set includes:\n\n- `allow-get-state`\n- `allow-get-queue-ids`\n- `allow-set-queue`\n- `allow-play`\n- `allow-pause`\n- `allow-toggle`\n- `allow-stop`\n- `allow-next`\n- `allow-previous`\n- `allow-seek`\n- `allow-skip-to`\n- `allow-set-shuffle`\n- `allow-set-repeat`\n- `allow-set-volume`\n- `allow-set-speed`\n- `allow-set-crossfade`\n- `allow-add-next`\n- `allow-add-to-queue`\n- `allow-remove-queue-item`\n- `allow-move-queue-item`\n- `allow-clear-queue`\n- `allow-scan-media-store`\n- `allow-scan-tree`\n- `allow-pick-folder`\n- `allow-persisted-roots`\n- `allow-release-root`\n- `allow-extract-artwork`\n- `allow-delete-track-file`\n- `allow-track-file-exists`"
         }
       ]
     }

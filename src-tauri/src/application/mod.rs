@@ -17,7 +17,9 @@ pub mod track_removal_service;
 
 pub use history_service::HistoryService;
 pub use library_service::LibraryService;
-pub use player_service::{PlayerPort, PlayerService, MAX_SPEED, MAX_VOLUME, MIN_SPEED, MIN_VOLUME};
+pub use player_service::{
+    PlayerPort, PlayerService, MAX_CROSSFADE_MS, MAX_SPEED, MAX_VOLUME, MIN_SPEED, MIN_VOLUME,
+};
 pub use playlist_service::PlaylistService;
 pub use scan_service::{ProgressCallback, ScanBatch, ScanService, ScannerPort, MEDIA_STORE_ROOT};
 pub use search_service::SearchService;
