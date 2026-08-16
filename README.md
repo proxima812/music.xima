@@ -1,4 +1,4 @@
-# music.xima
+# xima.music
 
 Персональный музыкальный плеер для Android. Полностью офлайн: без аккаунтов,
 серверов и сетевых запросов. Музыка лежит в памяти телефона, а не внутри APK.
@@ -6,6 +6,25 @@
 Воспроизведение — нативное (Media3/ExoPlayer в `MediaSessionService`), интерфейс —
 WebView на Tauri 2 + SolidJS. В вебе нет ни одного `<audio>`: звук, нотификация,
 экран блокировки и Bluetooth — целиком на стороне Android.
+
+## Скачать
+
+Готовый APK лежит на странице [Releases](https://github.com/proxima812/music.xima/releases).
+Файл один на все архитектуры (arm64, arm32, x86, x86_64):
+
+```bash
+adb install xima.music-1.0.1.apk
+```
+
+Либо перенесите его на телефон и откройте в проводнике — Android спросит
+разрешение на установку из неизвестного источника.
+
+APK подписан самодельным ключом, поэтому обновления встают только поверх
+сборок с той же подписью. Отпечаток сертификата (SHA-256):
+
+```
+274960300cd6383aebfd9b609ef9026860a5f43c322b53be92c63e5b456eadbe
+```
 
 ## Что умеет
 
@@ -74,8 +93,8 @@ adb push track.mp3 /sdcard/Music/
 adb shell content call --uri content://media/external --method scan_volume --arg external_primary
 ```
 
-На Android 13+ приложение пока не запрашивает `READ_MEDIA_AUDIO` само
-(см. BUGS.md B6), поэтому для первого запуска:
+Разрешение на чтение музыки приложение запрашивает само при первом
+сканировании. Если диалог был отклонён и больше не показывается:
 
 ```bash
 adb shell pm grant com.xima.music android.permission.READ_MEDIA_AUDIO
@@ -91,10 +110,37 @@ adb shell pm grant com.xima.music android.permission.READ_MEDIA_AUDIO
 | [docs/BUGS.md](./docs/BUGS.md) | починенное, открытое и непроверенное |
 | [docs/PROPOSALS.md](./docs/PROPOSALS.md) | что делать дальше |
 | [docs/HEROUI.md](./docs/HEROUI.md) | токены и классы UI-темы |
-| [promt.md](./promt.md) | исходная продуктовая спека |
+
+## Как помочь
+
+Правки и форки приветствуются. Перед тем как писать код:
+
+- [AGENTS.md](./AGENTS.md) — принятые в проекте правила; слои и границы важнее
+  стиля;
+- [docs/CONTRACTS.md](./docs/CONTRACTS.md) — типы, команды и события между
+  Rust, Kotlin и вебом. Мост строковый, компилятор опечатки не ловит;
+- [docs/BUGS.md](./docs/BUGS.md) — открытое и непроверенное. Там же две ловушки
+  окружения, на которые уходит день, если не знать: `src-tauri/gen/android`
+  перезаписывается каждым `tauri android init` (B1), а кириллица в пути к
+  проекту ломает Tauri CLI (B2).
+
+Перед пул-реквестом:
+
+```bash
+npm run typecheck && npm run test:ui-model
+npm run rust:lint && npm run rust:test
+```
+
+Тесты сейчас есть только у Rust-ядра и у моделей плеера — если добавите свои,
+станет только лучше.
+
+## Лицензия
+
+[MIT](./LICENSE). Музыка, обложки и теги остаются вашими: приложение ничего
+никуда не отправляет.
 
 ## Статус
 
 Собирается и работает на Pixel 8a: сканирование библиотеки, списки,
-воспроизведение, умные плейлисты. Release-сборки и подписи APK пока нет —
-только debug. Честный список непроверенного — в [docs/BUGS.md](./docs/BUGS.md).
+воспроизведение, умные плейлисты, подписанные release-сборки. Честный список
+непроверенного и открытых багов — в [docs/BUGS.md](./docs/BUGS.md).
