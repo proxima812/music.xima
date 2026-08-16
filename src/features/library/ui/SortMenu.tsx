@@ -7,7 +7,7 @@ import { Menu, type MenuAction } from '@/shared/ui'
 const SORT_LABELS: Record<TrackSort, string> = {
   TITLE_ASC: 'Название: А→Я',
   TITLE_DESC: 'Название: Я→А',
-  ARTIST_ASC: 'Исполнитель',
+  ARTIST_ASC: 'Исполнитель: А→Я',
   ALBUM_ASC: 'Альбом',
   DATE_ADDED_DESC: 'Сначала новые',
   DATE_ADDED_ASC: 'Сначала старые',

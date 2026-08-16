@@ -26,9 +26,11 @@ import {
   playerPrevious,
   playerQueue,
   playerSeek,
+  playerSetCrossfade,
   playerSetQueue,
   playerSetRepeat,
   playerSetShuffle,
+  playerSetVolume,
   playerState,
   playerToggle,
   type PlaybackState,
@@ -348,6 +350,37 @@ export function PlayerProvider(props: ParentProps) {
 
   // ─── старт ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Режимы воспроизведения живут в настройках, а нативный плеер после
+   * перезапуска процесса начинает с своих значений по умолчанию. Поэтому
+   * повтор, перемешивание, громкость и плавный переход досылаются на старте —
+   * без этого «повтор всей очереди» из настроек молча не работал бы.
+   */
+  const applySavedPlayback = async (initial: PlaybackState): Promise<void> => {
+    const saved = await settings.load()
+
+    const push = async (label: string, action: () => Promise<void>): Promise<void> => {
+      try {
+        await action()
+      } catch (error) {
+        console.error(`[player] ${label}`, error)
+      }
+    }
+
+    if (saved.repeat !== initial.repeat) {
+      await push('режим повтора не доехал до плеера', () => playerSetRepeat(saved.repeat))
+    }
+    if (saved.shuffle !== initial.shuffle) {
+      await push('shuffle не доехал до плеера', () => playerSetShuffle(saved.shuffle))
+    }
+    if (Math.abs(saved.volume - initial.volume) > 0.001) {
+      await push('громкость не доехала до плеера', () => playerSetVolume(saved.volume))
+    }
+    await push('плавный переход не доехал до плеера', () =>
+      playerSetCrossfade(saved.crossfadeMs),
+    )
+  }
+
   const restoreLastQueue = async (initial: PlaybackState): Promise<void> => {
     const saved = await settings.load()
     if (!saved.rememberQueue) return
@@ -361,10 +394,7 @@ export function PlayerProvider(props: ParentProps) {
     try {
       await playerSetQueue(last.trackIds, last.index, false)
       if (last.positionMs > 0) await playerSeek(last.positionMs)
-      if (saved.shuffle !== initial.shuffle) await playerSetShuffle(saved.shuffle)
-      if (saved.repeat !== initial.repeat) await playerSetRepeat(saved.repeat)
       await refreshQueue()
-      await resync()
     } catch (error) {
       console.error('[player] не удалось восстановить очередь', error)
     }
@@ -380,7 +410,9 @@ export function PlayerProvider(props: ParentProps) {
     }
 
     await refreshQueue()
+    await applySavedPlayback(initial)
     await restoreLastQueue(initial)
+    await resync()
   }
 
   onMount(() => {

@@ -2,14 +2,18 @@ import { useNavigate } from '@solidjs/router'
 import { FolderPlus, Settings, Shuffle, Sparkles } from 'lucide-solid'
 import { createEffect, createSignal, Match, onCleanup, Show, Switch } from 'solid-js'
 
+import { useSettings } from '@/app/providers'
 import {
   ensureLibrarySubscription,
+  librarySort,
   libraryVersion,
+  setLibrarySort,
   tracksList,
   TRACK_FORMS,
   watchScrollBottom,
 } from '@/features/library/model/library-store'
 import { ErrorState, ListSkeleton } from '@/features/library/ui/LibraryStates'
+import { SortMenu } from '@/features/library/ui/SortMenu'
 import { usePlayer } from '@/features/player/model/player-store'
 import { TrackMenu } from '@/features/player/ui/TrackMenu'
 import type { Track } from '@/shared/ipc'
@@ -33,11 +37,19 @@ import {
 export function HomeScreen() {
   const navigate = useNavigate()
   const player = usePlayer()
+  const settings = useSettings()
 
   const [scroller, setScroller] = createSignal<HTMLDivElement | null>(null)
   const [menuTrack, setMenuTrack] = createSignal<Track | null>(null)
 
+  // Порядок списка хранится в настройках, стор только следует за ней —
+  // так главная и вкладка «Песни» показывают одно и то же.
   createEffect(() => {
+    setLibrarySort(settings.value().librarySort)
+  })
+
+  createEffect(() => {
+    librarySort()
     libraryVersion()
     ensureLibrarySubscription()
     tracksList.load()
@@ -139,10 +151,18 @@ export function HomeScreen() {
             <span class="truncate text-xs text-muted tabular-nums">
               {formatPlural(tracksList.total(), TRACK_FORMS)}
             </span>
-            <Button size="sm" variant="tertiary" onClick={shuffleAll}>
-              <Shuffle size={16} aria-hidden="true" />
-              Перемешать
-            </Button>
+            <div class="flex shrink-0 items-center gap-1">
+              <Button size="sm" variant="tertiary" onClick={shuffleAll}>
+                <Shuffle size={16} aria-hidden="true" />
+                Перемешать
+              </Button>
+              <SortMenu
+                value={settings.value().librarySort}
+                onChange={(sort) => {
+                  settings.set('librarySort', sort)
+                }}
+              />
+            </div>
           </div>
 
           <div ref={setScroller} class="relative min-h-0 flex-1">

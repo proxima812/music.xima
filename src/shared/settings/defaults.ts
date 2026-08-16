@@ -25,13 +25,15 @@ export const MAX_CROSSFADE_MS = 12_000
 
 export const DEFAULT_SETTINGS: AppSettings = {
   volume: 1,
-  repeat: 'OFF',
+  // Очередь по умолчанию зациклена: доиграл последний трек — снова первый.
+  repeat: 'ALL',
   shuffle: false,
-  librarySort: 'TITLE_ASC',
+  // Главная показывает исполнителей по алфавиту, а внутри — их треки.
+  librarySort: 'ARTIST_ASC',
   rememberQueue: true,
   lastQueue: null,
   scanRoots: [],
-  crossfadeMs: 0,
+  crossfadeMs: 2_000,
 }
 
 export const SETTINGS_KEYS = [
