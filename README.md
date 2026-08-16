@@ -84,17 +84,36 @@ APK появится в `src-tauri/gen/android/app/build/outputs/apk/universal/d
 ### Релиз
 
 ```bash
-npm run android:build -- --apk                    # release, все ABI, без подписи
-MX_KEYSTORE_PASS='…' npm run release:sign         # выравнивание, подпись, проверка
+npm run android:build -- --apk       # release, все ABI, без подписи
+npm run release:sign                 # выравнивание, подпись, проверка
 ```
 
 Подпись — отдельным шагом, а не через `signingConfig` в Gradle: конфиг пришлось
 бы держать в `src-tauri/gen/android`, а эта папка перезаписывается каждым
-`tauri android init` (BUGS.md, B1). Ключ по умолчанию —
-`~/.android/music-xima-release.jks`, ключ `music-xima`; путь и имя переопределяются
-переменными `MX_KEYSTORE` и `MX_KEY_ALIAS`. **Хранилище и пароль в репозиторий не
-попадают и восстановлению не подлежат** — потеряете пароль, обновить установленное
-приложение уже нечем.
+`tauri android init` (BUGS.md, B1).
+
+Ключ скрипт берёт из `.env` в корне (файл в `.gitignore`), а заданное в окружении
+важнее файла:
+
+```bash
+MX_KEYSTORE=/Users/…/.android/xima-music-release.jks
+MX_KEY_ALIAS=music-xima
+MX_KEYSTORE_PASS=…
+```
+
+**Хранилище и пароль в репозиторий не попадают и восстановлению не подлежат.**
+Потеряете пароль — обновить установленное приложение уже нечем: новый ключ
+означает новую подпись, а поверх старой сборки она не встаёт, пользователям
+придётся удалять приложение вместе с плейлистами и историей. Так уже случилось
+между 1.0.1 и 1.1.0. Держите пароль в менеджере паролей, а не только в `.env`.
+
+Новое хранилище, если всё-таки понадобится:
+
+```bash
+keytool -genkeypair -keystore ~/.android/xima-music-release.jks \
+  -alias music-xima -keyalg RSA -keysize 4096 -validity 10000 \
+  -storetype PKCS12 -dname "CN=xima.music, O=xima.music, C=RU"
+```
 
 Музыку в репозиторий не кладём. Для теста достаточно закинуть файлы на телефон:
 

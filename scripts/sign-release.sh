@@ -7,14 +7,32 @@
 # каждым `tauri android init` (docs/BUGS.md, B1) — подпись там не переживёт
 # регенерацию. Скрипт лежит в репозитории и переживает.
 #
-#   MX_KEYSTORE_PASS='…' scripts/sign-release.sh [путь-к-unsigned.apk]
+#   scripts/sign-release.sh [путь-к-unsigned.apk]
 #
-# Переменные окружения:
+# Переменные окружения — из `.env` в корне репозитория либо из окружения,
+# окружение важнее файла:
 #   MX_KEYSTORE       путь к хранилищу (по умолчанию ~/.android/music-xima-release.jks)
 #   MX_KEY_ALIAS      имя ключа       (по умолчанию music-xima)
 #   MX_KEYSTORE_PASS  пароль; если не задан — скрипт спросит его, не показывая ввод
 #
+# `.env` в .gitignore: пароль не должен уехать в репозиторий ни при какой правке.
+#
 set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$ROOT/.env"
+
+if [ -f "$ENV_FILE" ]; then
+  # Уже заданное в окружении не перетираем: разовый прогон с другим ключом
+  # не должен упираться в файл.
+  while IFS='=' read -r key value; do
+    case "$key" in
+      MX_KEYSTORE | MX_KEY_ALIAS | MX_KEYSTORE_PASS)
+        [ -n "${!key:-}" ] || export "$key=$value"
+        ;;
+    esac
+  done < "$ENV_FILE"
+fi
 
 KEYSTORE="${MX_KEYSTORE:-$HOME/.android/music-xima-release.jks}"
 ALIAS="${MX_KEY_ALIAS:-music-xima}"
